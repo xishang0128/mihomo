@@ -20,6 +20,7 @@ const (
 	Reject
 	RejectDrop
 	Compatible
+	Mitm
 	Pass
 	Dns
 
@@ -188,6 +189,8 @@ func (at AdapterType) String() string {
 		return "Pass"
 	case Dns:
 		return "Dns"
+	case Mitm:
+		return "Mitm"
 	case Shadowsocks:
 		return "Shadowsocks"
 	case ShadowsocksR:

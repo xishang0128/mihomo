@@ -32,6 +32,7 @@ const (
 	TUIC
 	HYSTERIA2
 	INNER
+	MITM
 )
 
 type NetWork int
@@ -83,6 +84,8 @@ func (t Type) String() string {
 		return "Hysteria2"
 	case INNER:
 		return "Inner"
+	case MITM:
+		return "Mitm"
 	default:
 		return "Unknown"
 	}
@@ -155,6 +158,8 @@ type Metadata struct {
 	RawDstAddr net.Addr `json:"-"`
 	// Only domain rule
 	SniffHost string `json:"sniffHost"`
+	// Only Mitm rule
+	UserAgent string `json:"userAgent"`
 }
 
 func (m *Metadata) RemoteAddress() string {

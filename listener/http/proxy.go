@@ -51,7 +51,7 @@ func HandleConn(c net.Conn, tunnel C.Tunnel, cache *lru.LruCache[string, bool], 
 		var resp *http.Response
 
 		if !trusted {
-			resp = authenticate(request, cache)
+			resp = Authenticate(request, cache)
 
 			trusted = resp == nil
 		}
@@ -81,11 +81,11 @@ func HandleConn(c net.Conn, tunnel C.Tunnel, cache *lru.LruCache[string, bool], 
 				return // hijack connection
 			}
 
-			removeHopByHopHeaders(request.Header)
-			removeExtraHTTPHostPort(request)
+			RemoveHopByHopHeaders(request.Header)
+			RemoveExtraHTTPHostPort(request)
 
 			if request.URL.Scheme == "" || request.URL.Host == "" {
-				resp = responseWith(request, http.StatusBadRequest)
+				resp = ResponseWith(request, http.StatusBadRequest)
 			} else {
 				request = request.WithContext(ctx)
 
@@ -106,11 +106,11 @@ func HandleConn(c net.Conn, tunnel C.Tunnel, cache *lru.LruCache[string, bool], 
 				}
 				resp, err = client.Do(request)
 				if err != nil {
-					resp = responseWith(request, http.StatusBadGateway)
+					resp = ResponseWith(request, http.StatusBadGateway)
 				}
 			}
 
-			removeHopByHopHeaders(resp.Header)
+			RemoveHopByHopHeaders(resp.Header)
 		}
 
 		if keepAlive {
@@ -138,7 +138,7 @@ func authenticate(request *http.Request, cache *lru.LruCache[string, bool]) *htt
 	if authenticator != nil {
 		credential := parseBasicProxyAuthorization(request)
 		if credential == "" {
-			resp := responseWith(request, http.StatusProxyAuthRequired)
+			resp := ResponseWith(request, http.StatusProxyAuthRequired)
 			resp.Header.Set("Proxy-Authenticate", "Basic")
 			return resp
 		}
@@ -152,14 +152,14 @@ func authenticate(request *http.Request, cache *lru.LruCache[string, bool]) *htt
 		if !authed {
 			log.Infoln("Auth failed from %s", request.RemoteAddr)
 
-			return responseWith(request, http.StatusForbidden)
+			return ResponseWith(request, http.StatusForbidden)
 		}
 	}
 
 	return nil
 }
 
-func responseWith(request *http.Request, statusCode int) *http.Response {
+func ResponseWith(request *http.Request, statusCode int) *http.Response {
 	return &http.Response{
 		StatusCode: statusCode,
 		Status:     http.StatusText(statusCode),

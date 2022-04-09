@@ -28,6 +28,7 @@ const (
 	Network
 	Uid
 	SubRules
+	UserAgent
 	MATCH
 	AND
 	OR
@@ -80,6 +81,8 @@ func (rt RuleType) String() string {
 		return "Process"
 	case ProcessPath:
 		return "ProcessPath"
+	case UserAgent:
+		return "UserAgent"
 	case MATCH:
 		return "Match"
 	case RuleSet:
