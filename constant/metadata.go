@@ -177,6 +177,8 @@ func (m *Metadata) SourceAddrPort() netip.AddrPort {
 func (m *Metadata) SourceDetail() string {
 	if m.Type == INNER {
 		return fmt.Sprintf("%s", MihomoName)
+	} else if m.Type == MITM {
+		return fmt.Sprintf("%s-MITM", MihomoName)
 	}
 
 	switch {
