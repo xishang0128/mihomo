@@ -56,7 +56,6 @@ jobs:
         GOAMD64: ${{matrix.jobs.goamd64}}
         GOARM: ${{matrix.jobs.arm}}
         GOMIPS: ${{matrix.jobs.mips}}
-        CC: ${{steps.setup-ndk.outputs.ndk-path}}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{matrix.jobs.ndk}}-clang
         CGO_ENABLED: ${{matrix.jobs.cgo}}
       run: |
         go build -v -tags "with_gvisor" -trimpath -ldflags "-X 'github.com/metacubex/mihomo/constant.Version=${VERSION}' -X 'github.com/metacubex/mihomo/constant.BuildTime=${BUILDTIME}' -w -s -buildid="
