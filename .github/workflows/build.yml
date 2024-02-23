@@ -52,7 +52,6 @@ jobs:
           - { goos: android, goarch: arm, ndk: armv7a-linux-androideabi34, output: armeabi-v7a, cgo: '1' }
           - { goos: android, goarch: arm64, ndk: aarch64-linux-android34, output: arm64-v8a, cgo: '1' }
 
-
     steps:
     - uses: actions/checkout@v4
 
@@ -101,3 +100,23 @@ jobs:
         path: |
           mihomo*.tar.gz
           mihomo*.zip
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Download all workflow run artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
