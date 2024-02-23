@@ -76,7 +76,7 @@ jobs:
     - name: Set NDK path
       if: ${{ matrix.jobs.goos == 'android' }}
       run: |
-        echo ${{steps.setup-ndk.outputs.ndk-path}}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{matrix.jobs.ndk}}-clang >> $GITHUB_ENV
+        echo "CC=${{steps.setup-ndk.outputs.ndk-path}}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{matrix.jobs.ndk}}-clang" >> $GITHUB_ENV
 
     - name: build core
       env:
