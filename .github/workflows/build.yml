@@ -51,21 +51,20 @@ jobs:
         GOOS: ${{matrix.jobs.goos}}
         GOARCH: ${{matrix.jobs.goarch}}
         GOAMD64: ${{matrix.jobs.goamd64}}
-        output: ${{matrix.jobs.output}}
         CGO_ENABLED: '0'
       run: |
         go build -v -tags "with_gvisor" -trimpath -ldflags "-X 'github.com/metacubex/mihomo/constant.Version=${VERSION}' -X 'github.com/metacubex/mihomo/constant.BuildTime=${BUILDTIME}' -w -s -buildid="
         if [ "${GOOS}" = "windows" ]; then 
-          mv mihomo.exe mihomo-${GOOS}-${output}-${VERSION}.exe && zip -r mihomo-${GOOS}-${output}-${VERSION}.zip mihomo-${GOOS}-${output}-${VERSION}.exe
+          mv mihomo.exe mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}.exe && zip -r mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}.zip mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}.exe
         else 
-          mv mihomo* mihomo-${GOOS}-${output}-${VERSION} &&  tar -czvf mihomo-${GOOS}-${output}-${VERSION}.tar.gz mihomo-${GOOS}-${output}-${VERSION}
+          mv mihomo* mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION} &&  tar -czvf mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}.tar.gz mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}
         fi
         ls
 
     - name: Archive production artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.jobs.goos }}-${{ matrix.jobs.goarch }}
+        name: ${{ matrix.jobs.goos }}-${{ matrix.jobs.output }}
         path: |
           mihomo*.tar.gz
           mihomo*.zip
