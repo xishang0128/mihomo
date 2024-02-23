@@ -54,6 +54,9 @@ jobs:
         CGO_ENABLED: '0'
       run: |
         go build -v -tags "with_gvisor" -trimpath -ldflags "-X 'github.com/metacubex/mihomo/constant.Version=${VERSION}' -X 'github.com/metacubex/mihomo/constant.BuildTime=${BUILDTIME}' -w -s -buildid="
+        mv mihomo mihomo-${GOOS}-${output}-${VERSION}
+        if [ "${GOOS}" = "windows" ]; then zip -r mihomo-${GOOS}-${output}-${VERSION}.zip mihomo-${GOOS}-${output}-${VERSION}; else tar -czvf mihomo-${GOOS}-${output}-${VERSION}.tar.gz mihomo-${GOOS}-${output}-${VERSION}; fi
+        rm mihomo-${GOOS}-${output}-${VERSION}
         ls
 
     - name: Archive production artifacts
