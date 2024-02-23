@@ -88,8 +88,11 @@ jobs:
         CGO_ENABLED: ${{matrix.jobs.cgo}}
       run: |
         go build -v -tags "with_gvisor" -trimpath -ldflags "-X 'github.com/metacubex/mihomo/constant.Version=${VERSION}' -X 'github.com/metacubex/mihomo/constant.BuildTime=${BUILDTIME}' -w -s -buildid="
-        zip -r mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}.zip mihomo.exe
-        tar -czvf mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}.tar.gz mihomo
+        if [ "${GOOS}" = "windows" ]; then 
+          zip -r mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}.zip mihomo.exe
+        else 
+          tar -czvf mihomo-${GOOS}-${{matrix.jobs.output}}-${VERSION}.tar.gz mihomo
+        fi
 
     - name: Archive production artifacts
       uses: actions/upload-artifact@v4
