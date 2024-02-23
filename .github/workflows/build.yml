@@ -35,7 +35,7 @@ jobs:
           - { goos: linux, goarch: mips64, output: mips64 }
           - { goos: linux, goarch: mips64le, output: mips64le }
           - { goos: linux, goarch: loong64, output: loong64 }
-          - { goos: linux, goarch: risvc64, output: risvc64 }
+          - { goos: linux, goarch: riscv64, output: riscv64 }
 
 
           - { goos: windows, goarch: '386', output: '386' }
