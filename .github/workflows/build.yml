@@ -28,6 +28,30 @@ jobs:
           - { goos: linux, goarch: amd64, goamd64: v3, output: x86_64_v3 }
           - { goos: linux, goarch: arm64, output: arm64 }
           - { goos: linux, goarch: arm, goarm: '7', output: armv7 }
+          - { goos: linux, goarch: mips, mips: hardfloat, output: mips-hardfloat }
+          - { goos: linux, goarch: mips, mips: softfloat, output: mips-softfloat }
+          - { goos: linux, goarch: mipsle, mips: hardfloat, output: mipsle-hardfloat }
+          - { goos: linux, goarch: mipsle, mips: softfloat, output: mipsle-softfloat }
+          - { goos: linux, goarch: mips64, output: mips64 }
+          - { goos: linux, goarch: mips64le, output: mips64le }
+          - { goos: linux, goarch: loong64, output: loong64 }
+          - { goos: linux, goarch: riscv64, output: riscv64 }
+
+          - { goos: windows, goarch: '386', output: '386' }
+          - { goos: windows, goarch: amd64, output: x86_64 }
+          - { goos: windows, goarch: amd64, goamd64: v3, output: x86_64_v3 }
+          - { goos: windows, goarch: arm64, output: arm64 }
+
+          - { goos: freebsd, goarch: '386', output: '386' }
+          - { goos: freebsd, goarch: amd64, output: x86_64 }
+          - { goos: freebsd, goarch: amd64, goamd64: v3, output: x86_64_v3 }
+          - { goos: freebsd, goarch: arm64, output: arm64 }
+
+          - { goos: android, goarch: '386', ndk: i686-linux-android34, output: '386', cgo: '1'}
+          - { goos: android, goarch: amd64, ndk: x86_64-linux-android34, output: x86_64, cgo: '1' }
+          - { goos: android, goarch: arm, ndk: armv7a-linux-androideabi34, output: armeabi-v7a, cgo: '1' }
+          - { goos: android, goarch: arm64, ndk: aarch64-linux-android34, output: arm64-v8a, cgo: '1' }
+
 
     steps:
     - uses: actions/checkout@v4
@@ -48,6 +72,11 @@ jobs:
       id: setup-ndk
       with:
         ndk-version: r26c
+
+    - name: Set NDK path
+      if: ${{ matrix.jobs.goos == 'android' }}
+      run: |
+        echo ${{steps.setup-ndk.outputs.ndk-path}}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{matrix.jobs.ndk}}-clang >> $GITHUB_ENV
 
     - name: build core
       env:
