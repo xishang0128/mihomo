@@ -67,4 +67,5 @@ jobs:
       with:
         name: ${{ matrix.jobs.goos }}-${{ matrix.jobs.goarch }}
         path: |
-          output/${{ matrix.jobs.goos }}-${{ matrix.jobs.goarch }}
+          mihomo*.tar.gz
+          mihomo*.zip
