@@ -20,18 +20,23 @@ jobs:
     strategy:
       matrix:
         jobs:
-          - { goos: darwin, goarch: arm64, goamd64: v1, output: arm64 }
-          - { goos: darwin, goarch: amd64, goamd64: v1, output: amd64 }
+          - { goos: darwin, goarch: arm64, output: arm64 }
+          - { goos: darwin, goarch: amd64, output: amd64 }
 
-          - { goos: linux, goarch: '386', goamd64: v1, output: '386' }
-          - { goos: linux, goarch: amd64, goamd64: v1, output: x86_64 }
+          - { goos: linux, goarch: '386', output: '386' }
+          - { goos: linux, goarch: amd64, output: x86_64 }
           - { goos: linux, goarch: amd64, goamd64: v3, output: x86_64_v3 }
-          - { goos: linux, goarch: arm64, goamd64: v1, output: arm64 }
+          - { goos: linux, goarch: arm64, output: arm64 }
 
-          - { goos: windows, goarch: '386', goamd64: v1, output: '386' }
-          - { goos: windows, goarch: arm64, goamd64: v1, output: arm64 }
-          - { goos: windows, goarch: amd64, goamd64: v1, output: x86_64 }
+          - { goos: windows, goarch: '386', output: '386' }
+          - { goos: windows, goarch: amd64, output: x86_64 }
           - { goos: windows, goarch: amd64, goamd64: v3, output: x86_64_v3 }
+          - { goos: windows, goarch: arm64, output: arm64 }
+
+          - { goos: freebsd, goarch: '386', goamd64: v3, output: '386' }
+          - { goos: freebsd, goarch: amd64, goamd64: v3, output: x86_64 }
+          - { goos: freebsd, goarch: amd64, goamd64: v3, output: x86_64_v3 }
+          - { goos: freebsd, goarch: arm64, output: arm64 }
 
     steps:
     - uses: actions/checkout@v4
