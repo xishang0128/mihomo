@@ -19,8 +19,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux,]
-        goarch: [amd64]
+        jobs:
+          - { goos: darwin, goarch: arm64, goamd64: v1, output: arm64 }
+          - { goos: darwin, goarch: amd64, goamd64: v1, output: amd64 }
+
+          - { goos: linux, goarch: '386', goamd64: v1, output: '386' }
+          - { goos: linux, goarch: amd64, goamd64: v1, output: x86_64 }
+          - { goos: linux, goarch: amd64, goamd64: v3, output: x86_64_v3 }
+          - { goos: linux, goarch: arm64, goamd64: v1, output: arm64 }
+
+          - { goos: windows, goarch: '386', goamd64: v1, output: '386' }
+          - { goos: windows, goarch: arm64, goamd64: v1, output: arm64 }
+          - { goos: windows, goarch: amd64, goamd64: v1, output: x86_64 }
+          - { goos: windows, goarch: amd64, goamd64: v3, output: x86_64_v3 }
 
     steps:
     - uses: actions/checkout@v4
@@ -30,15 +41,22 @@ jobs:
       with:
         go-version: ^1.22
 
-    - name: Build
+    - name: Set Time Variable
       run: |
-        export GOOS=${{ matrix.goos }}
-        export GOARCH=${{ matrix.goarch }}
-        go build -v -o output/${{ matrix.goos }}-${{ matrix.goarch }} ./...
+        echo "VERSION=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+        echo "BUILDTIME=$(date)" >> $GITHUB_ENV
+
+    - name: build core
+      env:
+        GOOS: ${{matrix.jobs.goos}}
+        GOARCH: ${{matrix.jobs.goarch}}
+        GOAMD64: ${{matrix.jobs.goamd64}}
+        CGO_ENABLED: '0'
+      run: go build -v -tags "with_gvisor" -trimpath -ldflags "-X 'github.com/metacubex/mihomo/constant.Version=${VERSION}' -X 'github.com/metacubex/mihomo/constant.BuildTime=${BUILDTIME}' -w -s -buildid="
 
     - name: Archive production artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: ${{ matrix.goos }}-${{ matrix.goarch }}
+        name: ${{ matrix.jobs.goos }}-${{ matrix.jobs.goarch }}
         path: |
-          output/${{ matrix.goos }}-${{ matrix.goarch }}
+          output/${{ matrix.jobs.goos }}-${{ matrix.jobs.goarch }}
