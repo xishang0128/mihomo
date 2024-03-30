@@ -19,13 +19,13 @@ require (
 	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40
 	github.com/mdlayher/netlink v1.7.2
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
-	github.com/metacubex/quic-go v0.41.1-0.20240307164142-46c6f7cdf2d1
+	github.com/metacubex/quic-go v0.42.1-0.20240319071510-a251e5c66a5c
 	github.com/metacubex/sing-quic v0.0.0-20240310154810-47bca850fc01
 	github.com/metacubex/sing-shadowsocks v0.2.6
 	github.com/metacubex/sing-shadowsocks2 v0.2.0
-	github.com/metacubex/sing-tun v0.2.1-0.20240214100323-23e40bfb9067
+	github.com/metacubex/sing-tun v0.2.1-0.20240320004934-5d2b35447bfd
 	github.com/metacubex/sing-vmess v0.1.9-0.20231207122118-72303677451f
-	github.com/metacubex/sing-wireguard v0.0.0-20231209125515-0594297f7232
+	github.com/metacubex/sing-wireguard v0.0.0-20240321042214-224f96122a63
 	github.com/metacubex/tfo-go v0.0.0-20240228025757-be1269474a66
 	github.com/miekg/dns v1.1.58
 	github.com/mroth/weightedrand/v2 v2.1.0
@@ -84,7 +84,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
-	github.com/metacubex/gvisor v0.0.0-20240214095142-666a73bcf165 // indirect
+	github.com/metacubex/gvisor v0.0.0-20240320004321-933faba989ec // indirect
 	github.com/oasisprotocol/deoxysii v0.0.0-20220228165953-2091330c22b7 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.14 // indirect
@@ -93,7 +93,6 @@ require (
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-20 v0.4.1 // indirect
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7 // indirect
-	github.com/scjalliance/comshim v0.0.0-20230315213746-5e51f40bd3b9 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sina-ghaderi/poly1305 v0.0.0-20220724002748-c5926b03988b // indirect
 	github.com/sina-ghaderi/rabaead v0.0.0-20220730151906-ab6e06b96e8c // indirect
@@ -104,7 +103,7 @@ require (
 	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	gitlab.com/yawning/bsaes.git v0.0.0-20190805113838-0a714cd429ec // indirect
-	go.uber.org/mock v0.3.0 // indirect
+	go.uber.org/mock v0.4.0 // indirect
 	golang.org/x/mod v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect

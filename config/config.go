@@ -265,6 +265,7 @@ type RawTun struct {
 	EndpointIndependentNat   bool           `yaml:"endpoint-independent-nat" json:"endpoint_independent_nat,omitempty"`
 	UDPTimeout               int64          `yaml:"udp-timeout" json:"udp_timeout,omitempty"`
 	FileDescriptor           int            `yaml:"file-descriptor" json:"file-descriptor"`
+	TableIndex               int            `yaml:"table-index" json:"table-index"`
 }
 
 type RawTuicServer struct {
@@ -480,6 +481,11 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 				"www.msftnsci.com",
 				"www.msftconnecttest.com",
 			},
+		},
+		Experimental: Experimental{
+			// https://github.com/quic-go/quic-go/issues/4178
+			// Quic-go currently cannot automatically fall back on platforms that do not support ecn, so this feature is turned off by default.
+			QUICGoDisableECN: true,
 		},
 		Sniffer: RawSniffer{
 			Enable:          false,
@@ -915,7 +921,7 @@ func parseRules(rulesConfig []string, proxies map[string]C.Proxy, subRules map[s
 
 		l := len(rule)
 
-		if ruleName == "NOT" || ruleName == "OR" || ruleName == "AND" || ruleName == "SUB-RULE" {
+		if ruleName == "NOT" || ruleName == "OR" || ruleName == "AND" || ruleName == "SUB-RULE" || ruleName == "DOMAIN-REGEX" {
 			target = rule[l-1]
 			payload = strings.Join(rule[1:l-1], ",")
 		} else {
@@ -1448,6 +1454,7 @@ func parseTun(rawTun RawTun, general *General) error {
 		EndpointIndependentNat:   rawTun.EndpointIndependentNat,
 		UDPTimeout:               rawTun.UDPTimeout,
 		FileDescriptor:           rawTun.FileDescriptor,
+		TableIndex:               rawTun.TableIndex,
 	}
 
 	return nil
