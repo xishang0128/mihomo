@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	C "github.com/Dreamacro/clash/constant"
+	C "github.com/metacubex/mihomo/constant"
 
 	"github.com/gofrs/uuid"
 )

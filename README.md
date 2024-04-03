@@ -87,7 +87,7 @@ API.
 
 ## Credits
 
-- [Dreamacro/clash](https://github.com/Dreamacro/clash)
+- [metacubex/mihomo](https://github.com/metacubex/mihomo)
 - [SagerNet/sing-box](https://github.com/SagerNet/sing-box)
 - [riobard/go-shadowsocks2](https://github.com/riobard/go-shadowsocks2)
 - [v2ray/v2ray-core](https://github.com/v2ray/v2ray-core)

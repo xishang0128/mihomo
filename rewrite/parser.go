@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	C "github.com/Dreamacro/clash/constant"
+	C "github.com/metacubex/mihomo/constant"
 )
 
 func ParseRewrite(line string) (C.Rewrite, error) {

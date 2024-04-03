@@ -6,13 +6,13 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/Dreamacro/clash/adapter/inbound"
-	N "github.com/Dreamacro/clash/common/net"
-	C "github.com/Dreamacro/clash/constant"
-	"github.com/Dreamacro/clash/transport/socks5"
+	"github.com/metacubex/mihomo/adapter/inbound"
+	N "github.com/metacubex/mihomo/common/net"
+	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/transport/socks5"
 )
 
-func getServerConn(serverConn *N.BufferedConn, request *http.Request, srcAddr net.Addr, in chan<- C.ConnContext) (*N.BufferedConn, error) {
+func getServerConn(serverConn *N.BufferedConn, srcConn net.Conn, request *http.Request, tunnel C.Tunnel, additions ...inbound.Addition) (*N.BufferedConn, error) {
 	if serverConn != nil {
 		return serverConn, nil
 	}
@@ -33,7 +33,7 @@ func getServerConn(serverConn *N.BufferedConn, request *http.Request, srcAddr ne
 
 	left, right := net.Pipe()
 
-	in <- inbound.NewMitm(dstAddr, srcAddr, request.Header.Get("User-Agent"), right)
+	go tunnel.HandleTCPConn(inbound.NewMitm(dstAddr, srcConn, request.Header.Get("User-Agent"), right, additions...))
 
 	if request.TLS != nil {
 		tlsConn := tls.Client(left, &tls.Config{

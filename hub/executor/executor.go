@@ -180,6 +180,7 @@ func updateListeners(general *config.General, listeners map[string]C.InboundList
 	bindAddress := general.BindAddress
 	listener.SetBindAddress(bindAddress)
 	listener.ReCreateHTTP(general.Port, tunnel.Tunnel)
+	listener.ReCreateMitm(general.MitmPort, tunnel.Tunnel)
 	listener.ReCreateSocks(general.SocksPort, tunnel.Tunnel)
 	listener.ReCreateRedir(general.RedirPort, tunnel.Tunnel)
 	if !features.CMFA {
@@ -521,7 +522,7 @@ func updateIPTables(cfg *config.Config) {
 }
 
 func updateMitm(mitm *config.Mitm) {
-	listener.ReCreateMitm(mitm.Port, tunnel.TCPIn())
+	listener.ReCreateMitm(mitm.Port, tunnel.Tunnel)
 	tunnel.UpdateRewrites(mitm.Rules)
 }
 

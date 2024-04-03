@@ -5,7 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 
-	C "github.com/Dreamacro/clash/constant"
+	C "github.com/metacubex/mihomo/constant"
 )
 
 var (

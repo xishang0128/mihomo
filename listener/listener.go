@@ -15,12 +15,13 @@ import (
 
 	"golang.org/x/exp/slices"
 
-	"github.com/Dreamacro/clash/listener/mitm"
+	"github.com/metacubex/mihomo/common/cert"
 	"github.com/metacubex/mihomo/component/ebpf"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/listener/autoredir"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/http"
+	"github.com/metacubex/mihomo/listener/mitm"
 	"github.com/metacubex/mihomo/listener/mixed"
 	"github.com/metacubex/mihomo/listener/redir"
 	embedSS "github.com/metacubex/mihomo/listener/shadowsocks"
@@ -33,7 +34,7 @@ import (
 	LT "github.com/metacubex/mihomo/listener/tunnel"
 	"github.com/metacubex/mihomo/log"
 
-	rewrites "github.com/Dreamacro/clash/rewrite"
+	rewrites "github.com/metacubex/mihomo/rewrite"
 	"github.com/samber/lo"
 )
 
@@ -758,7 +759,7 @@ func PatchInboundListeners(newListenerMap map[string]C.InboundListener, tunnel C
 	}
 }
 
-func ReCreateMitm(port int, tcpIn chan<- C.ConnContext) {
+func ReCreateMitm(port int, tunnel C.Tunnel) {
 	mitmMux.Lock()
 	defer mitmMux.Unlock()
 
@@ -823,7 +824,7 @@ func ReCreateMitm(port int, tcpIn chan<- C.ConnContext) {
 		Handler:    &rewrites.RewriteHandler{},
 	}
 
-	mitmListener, err = mitm.New(opt, tcpIn)
+	mitmListener, err = mitm.New(opt, tunnel)
 	if err != nil {
 		return
 	}

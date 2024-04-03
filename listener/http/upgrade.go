@@ -89,7 +89,7 @@ func handleUpgrade(conn net.Conn, request *http.Request, tunnel C.Tunnel, additi
 	}
 }
 
-func HandleUpgradeY(localConn net.Conn, serverConn *N.BufferedConn, request *http.Request, in chan<- C.ConnContext) (resp *http.Response) {
+func HandleUpgradeY(localConn net.Conn, serverConn *N.BufferedConn, request *http.Request, tunnel C.Tunnel, additions ...inbound.Addition) (resp *http.Response) {
 	removeProxyHeaders(request.Header)
 	RemoveExtraHTTPHostPort(request)
 
@@ -110,7 +110,7 @@ func HandleUpgradeY(localConn net.Conn, serverConn *N.BufferedConn, request *htt
 
 		left, right := net.Pipe()
 
-		in <- inbound.NewHTTP(dstAddr, localConn.RemoteAddr(), right)
+		go tunnel.HandleTCPConn(inbound.NewHTTP(dstAddr, localConn, right, additions...))
 
 		serverConn = N.NewBufferedConn(left)
 

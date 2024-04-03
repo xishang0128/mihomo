@@ -15,13 +15,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Dreamacro/clash/common/cache"
-	N "github.com/Dreamacro/clash/common/net"
-	C "github.com/Dreamacro/clash/constant"
-	H "github.com/Dreamacro/clash/listener/http"
+	"github.com/metacubex/mihomo/adapter/inbound"
+	"github.com/metacubex/mihomo/common/lru"
+	N "github.com/metacubex/mihomo/common/net"
+	C "github.com/metacubex/mihomo/constant"
+	H "github.com/metacubex/mihomo/listener/http"
 )
 
-func HandleConn(c net.Conn, opt *Option, in chan<- C.ConnContext, cache *cache.LruCache[string, bool]) {
+func HandleConn(c net.Conn, opt *Option, tunnel C.Tunnel, cache *lru.LruCache[string, bool], additions ...inbound.Addition) {
 	var (
 		clientIP   = netip.MustParseAddrPort(c.RemoteAddr().String()).Addr()
 		sourceAddr net.Addr
@@ -132,7 +133,7 @@ readLoop:
 						session.request.TLS = connState
 					}
 
-					serverConn, err = getServerConn(serverConn, session.request, sourceAddr, in)
+					serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions...)
 					if err != nil {
 						break
 					}
@@ -160,13 +161,13 @@ readLoop:
 
 			// forward websocket
 			if isWebsocketRequest(request) {
-				serverConn, err = getServerConn(serverConn, session.request, sourceAddr, in)
+				serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions...)
 				if err != nil {
 					break
 				}
 
 				session.request.RequestURI = ""
-				if session.response = H.HandleUpgradeY(conn, serverConn, request, in); session.response == nil {
+				if session.response = H.HandleUpgradeY(conn, serverConn, request, tunnel); session.response == nil {
 					return // hijack connection
 				}
 			}
@@ -195,7 +196,7 @@ readLoop:
 				if session.request.URL.Host == "" {
 					session.response = session.NewErrorResponse(ErrInvalidURL)
 				} else {
-					serverConn, err = getServerConn(serverConn, session.request, sourceAddr, in)
+					serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions...)
 					if err != nil {
 						break
 					}

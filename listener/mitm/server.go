@@ -2,11 +2,12 @@ package mitm
 
 import (
 	"crypto/tls"
-	"github.com/Dreamacro/clash/common/cache"
-	"github.com/Dreamacro/clash/common/cert"
-	C "github.com/Dreamacro/clash/constant"
 	"net"
 	"net/http"
+
+	"github.com/metacubex/mihomo/common/cert"
+	"github.com/metacubex/mihomo/common/lru"
+	C "github.com/metacubex/mihomo/constant"
 )
 
 type Handler interface {
@@ -51,19 +52,19 @@ func (l *Listener) Close() error {
 }
 
 // New the MITM proxy actually is a type of HTTP proxy
-func New(option *Option, in chan<- C.ConnContext) (*Listener, error) {
-	return NewWithAuthenticate(option, in, true)
+func New(option *Option, tunnel C.Tunnel) (*Listener, error) {
+	return NewWithAuthenticate(option, tunnel, true)
 }
 
-func NewWithAuthenticate(option *Option, in chan<- C.ConnContext, authenticate bool) (*Listener, error) {
+func NewWithAuthenticate(option *Option, tunnel C.Tunnel, authenticate bool) (*Listener, error) {
 	l, err := net.Listen("tcp", option.Addr)
 	if err != nil {
 		return nil, err
 	}
 
-	var c *cache.LruCache[string, bool]
+	var c *lru.LruCache[string, bool]
 	if authenticate {
-		c = cache.New[string, bool](cache.WithAge[string, bool](90))
+		c = lru.New[string, bool](lru.WithAge[string, bool](90))
 	}
 
 	hl := &Listener{
@@ -80,7 +81,7 @@ func NewWithAuthenticate(option *Option, in chan<- C.ConnContext, authenticate b
 				}
 				continue
 			}
-			go HandleConn(conn, option, in, c)
+			go HandleConn(conn, option, tunnel, c)
 		}
 	}()
 

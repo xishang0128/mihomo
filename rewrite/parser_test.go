@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/Dreamacro/clash/constant"
+	"github.com/metacubex/mihomo/constant"
 
 	"github.com/stretchr/testify/assert"
 )

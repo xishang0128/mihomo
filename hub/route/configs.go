@@ -309,7 +309,7 @@ func patchConfigs(w http.ResponseWriter, r *http.Request) {
 	P.ReCreateShadowSocks(pointerOrDefaultString(general.ShadowSocksConfig, ports.ShadowSocksConfig), tunnel.Tunnel)
 	P.ReCreateVmess(pointerOrDefaultString(general.VmessConfig, ports.VmessConfig), tunnel.Tunnel)
 	P.ReCreateTuic(pointerOrDefaultTuicServer(general.TuicServer, P.LastTuicConf), tunnel.Tunnel)
-	P.ReCreateMitm(pointerOrDefault(general.MitmPort, ports.MitmPort), tcpIn)
+	P.ReCreateMitm(pointerOrDefault(general.MitmPort, ports.MitmPort), tunnel.Tunnel)
 
 	if general.Mode != nil {
 		tunnel.SetMode(*general.Mode)

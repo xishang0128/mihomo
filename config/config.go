@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	rewrites "github.com/Dreamacro/clash/rewrite"
+	rewrites "github.com/metacubex/mihomo/rewrite"
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"

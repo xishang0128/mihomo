@@ -3,7 +3,7 @@ package cert
 import (
 	"crypto/tls"
 
-	"github.com/Dreamacro/clash/component/trie"
+	"github.com/metacubex/mihomo/component/trie"
 )
 
 // DomainTrieCertsStorage cache wildcard certificates

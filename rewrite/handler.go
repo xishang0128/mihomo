@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	C "github.com/Dreamacro/clash/constant"
-	"github.com/Dreamacro/clash/listener/mitm"
-	"github.com/Dreamacro/clash/tunnel"
+	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/listener/mitm"
+	"github.com/metacubex/mihomo/tunnel"
 )
 
 var _ mitm.Handler = (*RewriteHandler)(nil)
