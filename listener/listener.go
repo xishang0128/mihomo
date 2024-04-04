@@ -815,7 +815,6 @@ func ReCreateMitm(port int, tunnel C.Tunnel) {
 	}
 
 	certOption.SetValidity(time.Hour * 24 * 365 * 2) // 2 years
-	certOption.SetOrganization("Clash ManInTheMiddle Proxy Services")
 
 	opt := &LM.Option{
 		Addr:       addr,
