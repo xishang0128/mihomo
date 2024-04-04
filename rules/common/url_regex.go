@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"regexp"
 
 	C "github.com/metacubex/mihomo/constant"
@@ -23,7 +22,6 @@ func (ur *UrlRegex) Match(metadata *C.Metadata) (bool, string) {
 	}
 
 	url := metadata.Url
-	fmt.Println(url)
 	return ur.regex.MatchString(url), ur.adapter
 }
 
