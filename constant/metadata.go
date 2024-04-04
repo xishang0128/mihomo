@@ -160,6 +160,7 @@ type Metadata struct {
 	SniffHost string `json:"sniffHost"`
 	// Only Mitm rule
 	UserAgent string `json:"userAgent"`
+	Url       string `json:"url"`
 }
 
 func (m *Metadata) RemoteAddress() string {
@@ -176,7 +177,7 @@ func (m *Metadata) SourceAddrPort() netip.AddrPort {
 
 func (m *Metadata) SourceDetail() string {
 	if m.Type == INNER {
-		return fmt.Sprintf("%s", MihomoName)
+		return MihomoName
 	} else if m.Type == MITM {
 		return fmt.Sprintf("%s-MITM", MihomoName)
 	}
@@ -189,7 +190,7 @@ func (m *Metadata) SourceDetail() string {
 	case m.Process != "":
 		return fmt.Sprintf("%s(%s)", m.SourceAddress(), m.Process)
 	default:
-		return fmt.Sprintf("%s", m.SourceAddress())
+		return m.SourceAddress()
 	}
 }
 

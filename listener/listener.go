@@ -21,7 +21,7 @@ import (
 	"github.com/metacubex/mihomo/listener/autoredir"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/http"
-	"github.com/metacubex/mihomo/listener/mitm"
+	LM "github.com/metacubex/mihomo/listener/mitm"
 	"github.com/metacubex/mihomo/listener/mixed"
 	"github.com/metacubex/mihomo/listener/redir"
 	embedSS "github.com/metacubex/mihomo/listener/shadowsocks"
@@ -33,8 +33,8 @@ import (
 	"github.com/metacubex/mihomo/listener/tuic"
 	LT "github.com/metacubex/mihomo/listener/tunnel"
 	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/mitm"
 
-	rewrites "github.com/metacubex/mihomo/rewrite"
 	"github.com/samber/lo"
 )
 
@@ -61,7 +61,7 @@ var (
 	autoRedirListener   *autoredir.Listener
 	autoRedirProgram    *ebpf.TcEBpfProgram
 	tcProgram           *ebpf.TcEBpfProgram
-	mitmListener        *mitm.Listener
+	mitmListener        *LM.Listener
 
 	// lock for recreate function
 	socksMux     sync.Mutex
@@ -817,14 +817,14 @@ func ReCreateMitm(port int, tunnel C.Tunnel) {
 	certOption.SetValidity(time.Hour * 24 * 365 * 2) // 2 years
 	certOption.SetOrganization("Clash ManInTheMiddle Proxy Services")
 
-	opt := &mitm.Option{
+	opt := &LM.Option{
 		Addr:       addr,
 		ApiHost:    "mitm.clash",
 		CertConfig: certOption,
-		Handler:    &rewrites.RewriteHandler{},
+		Handler:    &mitm.RewriteHandler{},
 	}
 
-	mitmListener, err = mitm.New(opt, tunnel)
+	mitmListener, err = LM.New(opt, tunnel)
 	if err != nil {
 		return
 	}

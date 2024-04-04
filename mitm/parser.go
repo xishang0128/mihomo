@@ -1,8 +1,9 @@
-package rewrites
+package mitm
 
 import (
-	regexp "github.com/dlclark/regexp2"
 	"strings"
+
+	regexp "github.com/dlclark/regexp2"
 
 	C "github.com/metacubex/mihomo/constant"
 )

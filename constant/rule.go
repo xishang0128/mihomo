@@ -29,6 +29,7 @@ const (
 	Uid
 	SubRules
 	UserAgent
+	UrlRegex
 	MATCH
 	AND
 	OR
@@ -83,6 +84,8 @@ func (rt RuleType) String() string {
 		return "ProcessPath"
 	case UserAgent:
 		return "UserAgent"
+	case UrlRegex:
+		return "UrlRegex"
 	case MATCH:
 		return "Match"
 	case RuleSet:

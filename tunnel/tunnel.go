@@ -18,6 +18,7 @@ import (
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/component/slowdown"
 	"github.com/metacubex/mihomo/component/sniffer"
+	"github.com/metacubex/mihomo/component/trie"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/constant/features"
 	"github.com/metacubex/mihomo/constant/provider"
@@ -33,6 +34,7 @@ var (
 	natTable       = nat.New()
 	rules          []C.Rule
 	rewrites       C.RewriteRule
+	rewriteHosts   *trie.DomainTrie[bool]
 	listeners      = make(map[string]C.InboundListener)
 	subRules       map[string][]C.Rule
 	proxies        = make(map[string]C.Proxy)
@@ -225,8 +227,9 @@ func Rewrites() C.RewriteRule {
 }
 
 // UpdateRewrites handle update rewrites
-func UpdateRewrites(rules C.RewriteRule) {
+func UpdateRewrites(hosts *trie.DomainTrie[bool], rules C.RewriteRule) {
 	configMux.Lock()
+	rewriteHosts = hosts
 	rewrites = rules
 	configMux.Unlock()
 }
@@ -292,6 +295,12 @@ func preHandleMetadata(metadata *C.Metadata) error {
 }
 
 func resolveMetadata(metadata *C.Metadata) (proxy C.Proxy, rule C.Rule, err error) {
+	if metadata.NetWork == C.TCP && metadata.Type != C.MITM &&
+		((rewriteHosts != nil && rewriteHosts.Search(metadata.String()) != nil) || metadata.DstPort == 80) {
+		proxy = proxies["MITM"]
+		return
+	}
+
 	if metadata.SpecialProxy != "" {
 		var exist bool
 		proxy, exist = proxies[metadata.SpecialProxy]

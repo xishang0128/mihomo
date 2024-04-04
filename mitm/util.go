@@ -1,4 +1,4 @@
-package rewrites
+package mitm
 
 import (
 	"strings"

@@ -91,7 +91,7 @@ func ApplyConfig(cfg *config.Config, force bool) {
 	}
 
 	updateUsers(cfg.Users)
-	updateProxies(cfg.Mitm, cfg.Proxies, cfg.Providers)
+	updateProxies(cfg.Proxies, cfg.Providers)
 	updateRules(cfg.Rules, cfg.SubRules, cfg.RuleProviders)
 	updateSniffer(cfg.Sniffer)
 	updateHosts(cfg.Hosts)
@@ -268,7 +268,7 @@ func updateHosts(tree *trie.DomainTrie[resolver.HostValue]) {
 	resolver.DefaultHosts = resolver.NewHosts(tree)
 }
 
-func updateProxies(mitm *config.Mitm, proxies map[string]C.Proxy, providers map[string]provider.ProxyProvider) {
+func updateProxies(proxies map[string]C.Proxy, providers map[string]provider.ProxyProvider) {
 	tunnel.UpdateProxies(proxies, providers)
 }
 
@@ -523,7 +523,7 @@ func updateIPTables(cfg *config.Config) {
 
 func updateMitm(mitm *config.Mitm) {
 	listener.ReCreateMitm(mitm.Port, tunnel.Tunnel)
-	tunnel.UpdateRewrites(mitm.Rules)
+	tunnel.UpdateRewrites(mitm.Hosts, mitm.Rules)
 }
 
 func Shutdown() {

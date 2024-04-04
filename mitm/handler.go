@@ -1,15 +1,16 @@
-package rewrites
+package mitm
 
 import (
 	"bufio"
 	"bytes"
 	"errors"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"net/textproto"
 	"strconv"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/listener/mitm"

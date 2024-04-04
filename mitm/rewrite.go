@@ -1,9 +1,10 @@
-package rewrites
+package mitm
 
 import (
-	regexp "github.com/dlclark/regexp2"
 	"strconv"
 	"strings"
+
+	regexp "github.com/dlclark/regexp2"
 
 	C "github.com/metacubex/mihomo/constant"
 
@@ -46,6 +47,9 @@ func (r *RewriteRule) RulePayload() string {
 }
 
 func (r *RewriteRule) ReplaceURLPayload(matchSub []string) string {
+	if len(r.RulePayload()) == 0 {
+		return ""
+	}
 	url := r.rulePayload
 
 	l := len(matchSub)

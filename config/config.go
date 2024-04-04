@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	rewrites "github.com/metacubex/mihomo/rewrite"
 	"github.com/metacubex/mihomo/adapter"
 	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -37,6 +36,7 @@ import (
 	L "github.com/metacubex/mihomo/listener"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/mitm"
 	R "github.com/metacubex/mihomo/rules"
 	RP "github.com/metacubex/mihomo/rules/provider"
 	T "github.com/metacubex/mihomo/tunnel"
@@ -168,8 +168,9 @@ type Sniffer struct {
 
 // Mitm config
 type Mitm struct {
-	Port  int           `yaml:"port" json:"port"`
-	Rules C.RewriteRule `yaml:"rules" json:"rules"`
+	Port  int                    `yaml:"port" json:"port"`
+	Hosts *trie.DomainTrie[bool] `yaml:"hosts" json:"hosts"`
+	Rules C.RewriteRule          `yaml:"rules" json:"rules"`
 }
 
 // Experimental config
@@ -293,8 +294,9 @@ type RawTuicServer struct {
 }
 
 type RawMitm struct {
-	Port  int                    `yaml:"port" json:"port"`
-	Rules []rewrites.RawMitmRule `yaml:"rules" json:"rules"`
+	Port  int                `yaml:"port" json:"port"`
+	Hosts []string           `yaml:"hosts" json:"hosts"`
+	Rules []mitm.RawMitmRule `yaml:"rules" json:"rules"`
 }
 
 type RawConfig struct {
@@ -514,8 +516,8 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 			OverrideDest:    true,
 		},
 		MITM: RawMitm{
-			Port:  0,
-			Rules: []rewrites.RawMitmRule{},
+			Hosts: []string{},
+			Rules: []mitm.RawMitmRule{},
 		},
 		Profile: Profile{
 			StoreSelected: true,
@@ -751,6 +753,9 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 	if cfg.MITM.Port != 0 {
 		proxies["MITM"] = adapter.NewProxy(outbound.NewMitm(fmt.Sprintf("127.0.0.1:%d", cfg.MITM.Port)))
 		proxyList = append(proxyList, "MITM")
+	} else if len(cfg.MITM.Hosts) != 0 {
+		proxies["MITM"] = adapter.NewProxy(outbound.NewMitm(fmt.Sprintf("127.0.0.1:%d", cfg.MitmPort)))
+		proxyList = append(proxyList, "MITM")
 	}
 
 	// parse proxy
@@ -953,7 +958,7 @@ func parseRules(rulesConfig []string, proxies map[string]C.Proxy, subRules map[s
 
 		l := len(rule)
 
-		if ruleName == "NOT" || ruleName == "OR" || ruleName == "AND" || ruleName == "SUB-RULE" || ruleName == "DOMAIN-REGEX" {
+		if ruleName == "NOT" || ruleName == "OR" || ruleName == "AND" || ruleName == "SUB-RULE" || ruleName == "DOMAIN-REGEX" || ruleName == "URL-REGEX" {
 			target = rule[l-1]
 			payload = strings.Join(rule[1:l-1], ",")
 		} else {
@@ -1609,7 +1614,7 @@ func parseMitm(rawMitm RawMitm) (*Mitm, error) {
 	)
 
 	for _, line := range rawMitm.Rules {
-		rule, err := rewrites.ParseRewrite(line)
+		rule, err := mitm.ParseRewrite(line)
 		if err != nil {
 			return nil, fmt.Errorf("parse rewrite rule failure: %w", err)
 		}
@@ -1621,8 +1626,19 @@ func parseMitm(rawMitm RawMitm) (*Mitm, error) {
 		}
 	}
 
+	hosts := trie.New[bool]()
+
+	if len(rawMitm.Hosts) != 0 {
+		for _, domain := range rawMitm.Hosts {
+			_ = hosts.Insert(domain, true)
+		}
+	}
+
+	_ = hosts.Insert("mitm.mihomo", true)
+
 	return &Mitm{
 		Port:  rawMitm.Port,
-		Rules: rewrites.NewRewriteRules(req, res),
+		Hosts: hosts,
+		Rules: mitm.NewRewriteRules(req, res),
 	}, nil
 }

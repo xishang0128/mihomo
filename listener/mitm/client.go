@@ -33,7 +33,7 @@ func getServerConn(serverConn *N.BufferedConn, srcConn net.Conn, request *http.R
 
 	left, right := net.Pipe()
 
-	go tunnel.HandleTCPConn(inbound.NewMitm(dstAddr, srcConn, request.Header.Get("User-Agent"), right, additions...))
+	go tunnel.HandleTCPConn(inbound.NewMitm(dstAddr, srcConn, request.Header.Get("User-Agent"), request.URL.String(), right, additions...))
 
 	if request.TLS != nil {
 		tlsConn := tls.Client(left, &tls.Config{
