@@ -5,18 +5,27 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+
+	C "github.com/metacubex/mihomo/constant"
 )
 
 var trustCerts []*x509.Certificate
 var globalCertPool *x509.CertPool
 var mutex sync.RWMutex
 var errNotMatch = errors.New("certificate fingerprints do not match")
+
+//go:embed ca-certificates.crt
+var _CaCertificates []byte
+var DisableEmbedCa, _ = strconv.ParseBool(os.Getenv("DISABLE_EMBED_CA"))
+var DisableSystemCa, _ = strconv.ParseBool(os.Getenv("DISABLE_SYSTEM_CA"))
 
 func AddCertificate(certificate string) error {
 	mutex.Lock()
@@ -34,12 +43,19 @@ func AddCertificate(certificate string) error {
 
 func initializeCertPool() {
 	var err error
-	globalCertPool, err = x509.SystemCertPool()
-	if err != nil {
+	if DisableSystemCa {
 		globalCertPool = x509.NewCertPool()
+	} else {
+		globalCertPool, err = x509.SystemCertPool()
+		if err != nil {
+			globalCertPool = x509.NewCertPool()
+		}
 	}
 	for _, cert := range trustCerts {
 		globalCertPool.AddCert(cert)
+	}
+	if !DisableEmbedCa {
+		globalCertPool.AppendCertsFromPEM(_CaCertificates)
 	}
 }
 
@@ -103,7 +119,7 @@ func GetTLSConfig(tlsConfig *tls.Config, fingerprint string, customCA string, cu
 	var certificate []byte
 	var err error
 	if len(customCA) > 0 {
-		certificate, err = os.ReadFile(customCA)
+		certificate, err = os.ReadFile(C.Path.Resolve(customCA))
 		if err != nil {
 			return nil, fmt.Errorf("load ca error: %w", err)
 		}

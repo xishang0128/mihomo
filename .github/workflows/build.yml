@@ -34,6 +34,8 @@ jobs:
           - { goos: linux, goarch: amd64, goamd64: v1, output: amd64-compatible, test: test }
           - { goos: linux, goarch: amd64, goamd64: v3, output: amd64 }
           - { goos: linux, goarch: arm64, output: arm64 }
+          - { goos: linux, goarch: arm, goarm: '5', output: armv5 }
+          - { goos: linux, goarch: arm, goarm: '6', output: armv6 }
           - { goos: linux, goarch: arm, goarm: '7', output: armv7 }
           - { goos: linux, goarch: mips, mips: hardfloat, output: mips-hardfloat }
           - { goos: linux, goarch: mips, mips: softfloat, output: mips-softfloat }
@@ -141,6 +143,12 @@ jobs:
       run: |
         go test ./...
 
+    - name: Update CA
+      run: |
+        sudo apt-get install ca-certificates
+        sudo update-ca-certificates
+        cp -f /etc/ssl/certs/ca-certificates.crt component/ca/ca-certificates.crt
+
     - name: Build core
       env:
         GOOS: ${{matrix.jobs.goos}}
@@ -164,11 +172,16 @@ jobs:
       if: ${{ matrix.jobs.goos == 'linux' && !contains(matrix.jobs.goarch, 'mips') }}
       run: |
         sudo apt-get install dpkg
-        if [ "${{matrix.jobs.goarch}}" = "loong64" ]; then
+        if [ "${{matrix.jobs.abi}}" = "1" ]; then
           ARCH=loongarch64
         else
           ARCH=${{matrix.jobs.goarch}}
         fi
+        PackageVersion=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' | sed 's/v//g' )
+        if [ $(git branch | awk -F ' ' '{print $2}') = "Alpha" ]; then
+          PackageVersion="$(echo "${PackageVersion}" | awk -F '.' '{$NF = $NF + 1; print}' OFS='.')-${VERSION}"
+        fi
+
         mkdir -p mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/DEBIAN
         mkdir -p mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/usr/bin
         mkdir -p mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/etc/mihomo
@@ -186,7 +199,7 @@ jobs:
 
         cat > mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/DEBIAN/control <<EOF
         Package: mihomo
-        Version: 1.18.2-${VERSION}
+        Version: ${PackageVersion}
         Section:
         Priority: extra
         Architecture: ${ARCH}
@@ -204,18 +217,18 @@ jobs:
         alien --to-rpm --scripts mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.deb
         mv mihomo*.rpm mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.rpm
 
-    - name: Convert DEB to PKG
-      if: ${{ matrix.jobs.goos == 'linux' && !contains(matrix.jobs.goarch, 'mips') && !contains(matrix.jobs.goarch, 'loong64') }}
-      run: |
-        docker pull archlinux
-        docker run --rm -v ./:/mnt archlinux bash -c "
-          pacman -Syu pkgfile base-devel --noconfirm
-          curl -L https://github.com/helixarch/debtap/raw/master/debtap > /usr/bin/debtap
-          chmod 755 /usr/bin/debtap
-          debtap -u 
-          debtap -Q /mnt/mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.deb
-        "
-        mv mihomo*.pkg.tar.zst mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.pkg.tar.zst
+    # - name: Convert DEB to PKG
+    #   if: ${{ matrix.jobs.goos == 'linux' && !contains(matrix.jobs.goarch, 'mips') && !contains(matrix.jobs.goarch, 'loong64') }}
+    #   run: |
+    #     docker pull archlinux
+    #     docker run --rm -v ./:/mnt archlinux bash -c "
+    #       pacman -Syu pkgfile base-devel --noconfirm
+    #       curl -L https://github.com/helixarch/debtap/raw/master/debtap > /usr/bin/debtap
+    #       chmod 755 /usr/bin/debtap
+    #       debtap -u 
+    #       debtap -Q /mnt/mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.deb
+    #     "
+    #     mv mihomo*.pkg.tar.zst mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.pkg.tar.zst
 
     - name: Save version
       run: |
@@ -230,7 +243,6 @@ jobs:
           mihomo*.gz
           mihomo*.deb
           mihomo*.rpm
-          mihomo*.pkg.tar.zst
           mihomo*.zip
           version.txt
 

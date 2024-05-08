@@ -91,10 +91,11 @@ type Inbound struct {
 
 // Controller config
 type Controller struct {
-	ExternalController    string `json:"-"`
-	ExternalControllerTLS string `json:"-"`
-	ExternalUI            string `json:"-"`
-	Secret                string `json:"-"`
+	ExternalController     string `json:"-"`
+	ExternalControllerTLS  string `json:"-"`
+	ExternalControllerUnix string `json:"-"`
+	ExternalUI             string `json:"-"`
+	Secret                 string `json:"-"`
 }
 
 // NTP config
@@ -113,6 +114,7 @@ type DNS struct {
 	PreferH3              bool             `yaml:"prefer-h3"`
 	IPv6                  bool             `yaml:"ipv6"`
 	IPv6Timeout           uint             `yaml:"ipv6-timeout"`
+	UseSystemHosts        bool             `yaml:"use-system-hosts"`
 	NameServer            []dns.NameServer `yaml:"nameserver"`
 	Fallback              []dns.NameServer `yaml:"fallback"`
 	FallbackFilter        FallbackFilter   `yaml:"fallback-filter"`
@@ -152,6 +154,7 @@ type IPTables struct {
 	Enable           bool     `yaml:"enable" json:"enable"`
 	InboundInterface string   `yaml:"inbound-interface" json:"inbound-interface"`
 	Bypass           []string `yaml:"bypass" json:"bypass"`
+	DnsRedirect      bool     `yaml:"dns-redirect" json:"dns-redirect"`
 }
 
 type Sniffer struct {
@@ -168,6 +171,7 @@ type Experimental struct {
 	Fingerprints     []string `yaml:"fingerprints"`
 	QUICGoDisableGSO bool     `yaml:"quic-go-disable-gso"`
 	QUICGoDisableECN bool     `yaml:"quic-go-disable-ecn"`
+	IP4PEnable       bool     `yaml:"dialer-ip4p-convert"`
 }
 
 // Config is mihomo config manager
@@ -206,6 +210,7 @@ type RawDNS struct {
 	IPv6                  bool                                `yaml:"ipv6" json:"ipv6"`
 	IPv6Timeout           uint                                `yaml:"ipv6-timeout" json:"ipv6-timeout"`
 	UseHosts              bool                                `yaml:"use-hosts" json:"use-hosts"`
+	UseSystemHosts        bool                                `yaml:"use-system-hosts" json:"use-system-hosts"`
 	NameServer            []string                            `yaml:"nameserver" json:"nameserver"`
 	Fallback              []string                            `yaml:"fallback" json:"fallback"`
 	FallbackFilter        RawFallbackFilter                   `yaml:"fallback-filter" json:"fallback-filter"`
@@ -263,6 +268,7 @@ type RawTun struct {
 	EndpointIndependentNat   bool           `yaml:"endpoint-independent-nat" json:"endpoint_independent_nat,omitempty"`
 	UDPTimeout               int64          `yaml:"udp-timeout" json:"udp_timeout,omitempty"`
 	FileDescriptor           int            `yaml:"file-descriptor" json:"file-descriptor"`
+	TableIndex               int            `yaml:"table-index" json:"table-index"`
 }
 
 type RawTuicServer struct {
@@ -301,6 +307,7 @@ type RawConfig struct {
 	LogLevel                log.LogLevel      `yaml:"log-level" json:"log-level"`
 	IPv6                    bool              `yaml:"ipv6" json:"ipv6"`
 	ExternalController      string            `yaml:"external-controller"`
+	ExternalControllerUnix  string            `yaml:"external-controller-unix"`
 	ExternalControllerTLS   string            `yaml:"external-controller-tls"`
 	ExternalUI              string            `yaml:"external-ui"`
 	ExternalUIURL           string            `yaml:"external-ui-url" json:"external-ui-url"`
@@ -346,6 +353,7 @@ type RawConfig struct {
 type GeoXUrl struct {
 	GeoIp   string `yaml:"geoip" json:"geoip"`
 	Mmdb    string `yaml:"mmdb" json:"mmdb"`
+	ASN     string `yaml:"asn" json:"asn"`
 	GeoSite string `yaml:"geosite" json:"geosite"`
 }
 
@@ -409,7 +417,7 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 		ProxyGroup:        []map[string]any{},
 		TCPConcurrent:     false,
 		FindProcessMode:   P.FindProcessStrict,
-		GlobalUA:          "clash.meta",
+		GlobalUA:          "clash.meta/" + C.Version,
 		Tun: RawTun{
 			Enable:              false,
 			Device:              "",
@@ -440,6 +448,7 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 			Enable:           false,
 			InboundInterface: "lo",
 			Bypass:           []string{},
+			DnsRedirect:      true,
 		},
 		NTP: RawNTP{
 			Enable:        false,
@@ -449,12 +458,13 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 			Interval:      30,
 		},
 		DNS: RawDNS{
-			Enable:       false,
-			IPv6:         false,
-			UseHosts:     true,
-			IPv6Timeout:  100,
-			EnhancedMode: C.DNSMapping,
-			FakeIPRange:  "198.18.0.1/16",
+			Enable:         false,
+			IPv6:           false,
+			UseHosts:       true,
+			UseSystemHosts: true,
+			IPv6Timeout:    100,
+			EnhancedMode:   C.DNSMapping,
+			FakeIPRange:    "198.18.0.1/16",
 			FallbackFilter: RawFallbackFilter{
 				GeoIP:     true,
 				GeoIPCode: "CN",
@@ -477,6 +487,11 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 				"www.msftconnecttest.com",
 			},
 		},
+		Experimental: Experimental{
+			// https://github.com/quic-go/quic-go/issues/4178
+			// Quic-go currently cannot automatically fall back on platforms that do not support ecn, so this feature is turned off by default.
+			QUICGoDisableECN: true,
+		},
 		Sniffer: RawSniffer{
 			Enable:          false,
 			Sniffing:        []string{},
@@ -492,6 +507,7 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 		},
 		GeoXUrl: GeoXUrl{
 			Mmdb:    "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb",
+			ASN:     "https://github.com/xishang0128/geoip/releases/download/latest/GeoLite2-ASN.mmdb",
 			GeoIp:   "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat",
 			GeoSite: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat",
 		},
@@ -617,6 +633,7 @@ func parseGeneral(cfg *RawConfig) (*General, error) {
 	C.GeoIpUrl = cfg.GeoXUrl.GeoIp
 	C.GeoSiteUrl = cfg.GeoXUrl.GeoSite
 	C.MmdbUrl = cfg.GeoXUrl.Mmdb
+	C.ASNUrl = cfg.GeoXUrl.ASN
 	C.GeodataMode = cfg.GeodataMode
 	C.UA = cfg.GlobalUA
 	if cfg.KeepAliveInterval != 0 {
@@ -666,10 +683,11 @@ func parseGeneral(cfg *RawConfig) (*General, error) {
 			InboundMPTCP:      cfg.InboundMPTCP,
 		},
 		Controller: Controller{
-			ExternalController:    cfg.ExternalController,
-			ExternalUI:            cfg.ExternalUI,
-			Secret:                cfg.Secret,
-			ExternalControllerTLS: cfg.ExternalControllerTLS,
+			ExternalController:     cfg.ExternalController,
+			ExternalUI:             cfg.ExternalUI,
+			Secret:                 cfg.Secret,
+			ExternalControllerUnix: cfg.ExternalControllerUnix,
+			ExternalControllerTLS:  cfg.ExternalControllerTLS,
 		},
 		UnifiedDelay:            cfg.UnifiedDelay,
 		Mode:                    cfg.Mode,
@@ -909,7 +927,7 @@ func parseRules(rulesConfig []string, proxies map[string]C.Proxy, subRules map[s
 
 		l := len(rule)
 
-		if ruleName == "NOT" || ruleName == "OR" || ruleName == "AND" || ruleName == "SUB-RULE" {
+		if ruleName == "NOT" || ruleName == "OR" || ruleName == "AND" || ruleName == "SUB-RULE" || ruleName == "DOMAIN-REGEX" {
 			target = rule[l-1]
 			payload = strings.Join(rule[1:l-1], ",")
 		} else {
@@ -1270,12 +1288,13 @@ func parseDNS(rawCfg *RawConfig, hosts *trie.DomainTrie[resolver.HostValue], rul
 	}
 
 	dnsCfg := &DNS{
-		Enable:       cfg.Enable,
-		Listen:       cfg.Listen,
-		PreferH3:     cfg.PreferH3,
-		IPv6Timeout:  cfg.IPv6Timeout,
-		IPv6:         cfg.IPv6,
-		EnhancedMode: cfg.EnhancedMode,
+		Enable:         cfg.Enable,
+		Listen:         cfg.Listen,
+		PreferH3:       cfg.PreferH3,
+		IPv6Timeout:    cfg.IPv6Timeout,
+		IPv6:           cfg.IPv6,
+		UseSystemHosts: cfg.UseSystemHosts,
+		EnhancedMode:   cfg.EnhancedMode,
 		FallbackFilter: FallbackFilter{
 			IPCIDR:  []netip.Prefix{},
 			GeoSite: []router.DomainMatcher{},
@@ -1442,6 +1461,7 @@ func parseTun(rawTun RawTun, general *General) error {
 		EndpointIndependentNat:   rawTun.EndpointIndependentNat,
 		UDPTimeout:               rawTun.UDPTimeout,
 		FileDescriptor:           rawTun.FileDescriptor,
+		TableIndex:               rawTun.TableIndex,
 	}
 
 	return nil

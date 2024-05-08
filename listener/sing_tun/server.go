@@ -12,6 +12,7 @@ import (
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/iface"
+	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
@@ -39,6 +40,8 @@ type Listener struct {
 	networkUpdateMonitor    tun.NetworkUpdateMonitor
 	defaultInterfaceMonitor tun.DefaultInterfaceMonitor
 	packageManager          tun.PackageManager
+
+	dnsServerIp []string
 }
 
 func CalculateInterfaceName(name string) (tunName string) {
@@ -112,6 +115,10 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 	} else {
 		udpTimeout = int64(sing.UDPTimeout.Seconds())
 	}
+	tableIndex := options.TableIndex
+	if tableIndex == 0 {
+		tableIndex = 2022
+	}
 	includeUID := uidToRange(options.IncludeUID)
 	if len(options.IncludeUIDRange) > 0 {
 		var err error
@@ -143,12 +150,16 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 
 		dnsAdds = append(dnsAdds, addrPort)
 	}
+
+	var dnsServerIp []string
 	for _, a := range options.Inet4Address {
 		addrPort := netip.AddrPortFrom(a.Addr().Next(), 53)
+		dnsServerIp = append(dnsServerIp, a.Addr().Next().String())
 		dnsAdds = append(dnsAdds, addrPort)
 	}
 	for _, a := range options.Inet6Address {
 		addrPort := netip.AddrPortFrom(a.Addr().Next(), 53)
+		dnsServerIp = append(dnsServerIp, a.Addr().Next().String())
 		dnsAdds = append(dnsAdds, addrPort)
 	}
 
@@ -169,6 +180,7 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		closed:  false,
 		options: options,
 		handler: handler,
+		tunName: tunName,
 	}
 	defer func() {
 		if err != nil {
@@ -225,7 +237,7 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		ExcludePackage:           options.ExcludePackage,
 		FileDescriptor:           options.FileDescriptor,
 		InterfaceMonitor:         defaultInterfaceMonitor,
-		TableIndex:               2022,
+		TableIndex:               tableIndex,
 	}
 
 	err = l.buildAndroidRules(&tunOptions)
@@ -238,6 +250,10 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		err = E.Cause(err, "configure tun interface")
 		return
 	}
+
+	l.dnsServerIp = dnsServerIp
+	// after tun.New sing-tun has set DNS to TUN interface
+	resolver.AddSystemDnsBlacklist(dnsServerIp...)
 
 	stackOptions := tun.StackOptions{
 		Context:                context.TODO(),
@@ -256,15 +272,17 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		}
 	}
 	l.tunIf = tunIf
-	l.tunStack, err = tun.NewStack(strings.ToLower(options.Stack.String()), stackOptions)
+
+	tunStack, err := tun.NewStack(strings.ToLower(options.Stack.String()), stackOptions)
 	if err != nil {
 		return
 	}
 
-	err = l.tunStack.Start()
+	err = tunStack.Start()
 	if err != nil {
 		return
 	}
+	l.tunStack = tunStack
 
 	//l.openAndroidHotspot(tunOptions)
 
@@ -275,7 +293,6 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 
 func (l *Listener) FlushDefaultInterface() {
 	if l.options.AutoDetectInterface {
-		targetInterface := dialer.DefaultInterface.Load()
 		for _, destination := range []netip.Addr{netip.IPv4Unspecified(), netip.IPv6Unspecified(), netip.MustParseAddr("1.1.1.1")} {
 			autoDetectInterfaceName := l.defaultInterfaceMonitor.DefaultInterfaceName(destination)
 			if autoDetectInterfaceName == l.tunName {
@@ -283,16 +300,15 @@ func (l *Listener) FlushDefaultInterface() {
 			} else if autoDetectInterfaceName == "" || autoDetectInterfaceName == "<nil>" {
 				log.Warnln("[TUN] Auto detect interface by %s get empty name.", destination.String())
 			} else {
-				targetInterface = autoDetectInterfaceName
-				if old := dialer.DefaultInterface.Load(); old != targetInterface {
-					log.Warnln("[TUN] default interface changed by monitor, %s => %s", old, targetInterface)
-
-					dialer.DefaultInterface.Store(targetInterface)
-
+				if old := dialer.DefaultInterface.Swap(autoDetectInterfaceName); old != autoDetectInterfaceName {
+					log.Warnln("[TUN] default interface changed by monitor, %s => %s", old, autoDetectInterfaceName)
 					iface.FlushCache()
 				}
 				return
 			}
+		}
+		if dialer.DefaultInterface.CompareAndSwap("", "<invalid>") {
+			log.Warnln("[TUN] Auto detect interface failed, set '<invalid>' to DefaultInterface to avoid lookback")
 		}
 	}
 }
@@ -331,6 +347,7 @@ func parseRange(uidRanges []ranges.Range[uint32], rangeList []string) ([]ranges.
 
 func (l *Listener) Close() error {
 	l.closed = true
+	resolver.RemoveSystemDnsBlacklist(l.dnsServerIp...)
 	return common.Close(
 		l.tunStack,
 		l.tunIf,
