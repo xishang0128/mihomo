@@ -28,6 +28,7 @@ func HandleConn(c net.Conn, opt *Option, tunnel C.Tunnel, authenticator auth.Aut
 		sourceAddr net.Addr
 		serverConn *N.BufferedConn
 		connState  *tls.ConnectionState
+		user 		 string	
 	)
 
 	defer func() {
@@ -37,6 +38,9 @@ func HandleConn(c net.Conn, opt *Option, tunnel C.Tunnel, authenticator auth.Aut
 	}()
 
 	conn := N.NewBufferedConn(c)
+
+	additions = append(additions, inbound.Placeholder)
+	inUserIdx := len(additions) - 1
 
 	trusted := authenticator == nil // disable authenticate if cache is nil
 	if !trusted {
@@ -62,11 +66,9 @@ readLoop:
 		sourceAddr = parseSourceAddress(session.request, conn.RemoteAddr(), sourceAddr)
 		session.request.RemoteAddr = sourceAddr.String()
 
-		if !trusted {
-			session.response, _ = H.Authenticate(session.request, authenticator)
-
-			trusted = session.response == nil
-		}
+		session.response, user = H.Authenticate(session.request, authenticator)
+		additions[inUserIdx] = inbound.WithInUser(user)
+		trusted = session.response == nil
 
 		if trusted {
 			if session.request.Method == http.MethodConnect {
@@ -133,7 +135,7 @@ readLoop:
 						session.request.TLS = connState
 					}
 
-					serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions...)
+					serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions)
 					if err != nil {
 						break
 					}
@@ -161,7 +163,7 @@ readLoop:
 
 			// forward websocket
 			if isWebsocketRequest(request) {
-				serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions...)
+				serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions)
 				if err != nil {
 					break
 				}
@@ -196,7 +198,7 @@ readLoop:
 				if session.request.URL.Host == "" {
 					session.response = session.NewErrorResponse(ErrInvalidURL)
 				} else {
-					serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions...)
+					serverConn, err = getServerConn(serverConn, c, session.request, tunnel, additions)
 					if err != nil {
 						break
 					}

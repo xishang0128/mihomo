@@ -773,6 +773,9 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 	proxyList = append(proxyList, "DIRECT", "REJECT")
 
 	if cfg.MITM.Port != 0 {
+		if cfg.MitmPort == 0 {
+			cfg.MitmPort = cfg.MITM.Port
+		}
 		proxies["MITM"] = adapter.NewProxy(outbound.NewMitm(fmt.Sprintf("127.0.0.1:%d", cfg.MITM.Port)))
 		proxyList = append(proxyList, "MITM")
 	} else if cfg.MitmPort != 0 {

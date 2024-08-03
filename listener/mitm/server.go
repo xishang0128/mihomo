@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/common/cert"
 	"github.com/metacubex/mihomo/component/auth"
 	C "github.com/metacubex/mihomo/constant"
@@ -53,12 +54,21 @@ func (l *Listener) Close() error {
 }
 
 // New the MITM proxy actually is a type of HTTP proxy
-func New(option *Option, tunnel C.Tunnel) (*Listener, error) {
-	return NewWithAuthenticate(option, tunnel, authStore.Authenticator())
+func New(option *Option, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener, error) {
+	return NewWithAuthenticate(option, tunnel, authStore.Authenticator(), additions...)
 }
 
-func NewWithAuthenticate(option *Option, tunnel C.Tunnel, authenticator auth.Authenticator) (*Listener, error) {
-	l, err := net.Listen("tcp", option.Addr)
+func NewWithAuthenticate(option *Option, tunnel C.Tunnel, authenticator auth.Authenticator, additions ...inbound.Addition) (*Listener, error) {
+	isDefault := false
+	if len(additions) == 0 {
+		isDefault = true
+		additions = []inbound.Addition{
+			inbound.WithInName("DEFAULT-HTTP"),
+			inbound.WithSpecialRules(""),
+		}
+	}
+
+	l, err := inbound.Listen("tcp", option.Addr)
 	if err != nil {
 		return nil, err
 	}
@@ -70,14 +80,20 @@ func NewWithAuthenticate(option *Option, tunnel C.Tunnel, authenticator auth.Aut
 	}
 	go func() {
 		for {
-			conn, err1 := hl.listener.Accept()
-			if err1 != nil {
+			conn, err := hl.listener.Accept()
+			if err != nil {
 				if hl.closed {
 					break
 				}
 				continue
 			}
-			go HandleConn(conn, option, tunnel, authenticator)
+			if isDefault { // only apply on default listener
+				if !inbound.IsRemoteAddrDisAllowed(conn.RemoteAddr()) {
+					_ = conn.Close()
+					continue
+				}
+			}
+			go HandleConn(conn, option, tunnel, authenticator, additions...)
 		}
 	}()
 
