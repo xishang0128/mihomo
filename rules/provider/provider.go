@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"gopkg.in/yaml.v3"
+	"io"
 	"runtime"
 	"strings"
 	"time"
@@ -13,6 +13,8 @@ import (
 	"github.com/metacubex/mihomo/component/resource"
 	C "github.com/metacubex/mihomo/constant"
 	P "github.com/metacubex/mihomo/constant/provider"
+
+	"gopkg.in/yaml.v3"
 )
 
 var tunnel P.Tunnel
@@ -42,6 +44,7 @@ type RulePayload struct {
 }
 
 type ruleStrategy interface {
+	Behavior() P.RuleBehavior
 	Match(metadata *C.Metadata) bool
 	Count() int
 	ShouldResolveIP() bool
@@ -49,6 +52,13 @@ type ruleStrategy interface {
 	Reset()
 	Insert(rule string)
 	FinishInsert()
+}
+
+type mrsRuleStrategy interface {
+	ruleStrategy
+	FromMrs(r io.Reader, count int) error
+	WriteMrs(w io.Writer) error
+	DumpMrs(f func(key string) bool)
 }
 
 func (rp *ruleSetProvider) Type() P.ProviderType {
@@ -151,9 +161,13 @@ func newStrategy(behavior P.RuleBehavior, parse func(tp, payload, target string,
 }
 
 var ErrNoPayload = errors.New("file must have a `payload` field")
+var ErrInvalidFormat = errors.New("invalid format")
 
 func rulesParse(buf []byte, strategy ruleStrategy, format P.RuleFormat) (ruleStrategy, error) {
 	strategy.Reset()
+	if format == P.MrsRule {
+		return rulesMrsParse(buf, strategy)
+	}
 
 	schema := &RulePayload{}
 
@@ -170,15 +184,14 @@ func rulesParse(buf []byte, strategy ruleStrategy, format P.RuleFormat) (ruleStr
 			line = buf[s : i+1]
 			s = i + 1
 		} else {
-			s = len(buf)              // stop loop in next step
-			if firstLineLength == 0 { // no head or only one line body
+			s = len(buf)                                      // stop loop in next step
+			if firstLineLength == 0 && format == P.YamlRule { // no head or only one line body
 				return nil, ErrNoPayload
 			}
 		}
 		var str string
 		switch format {
 		case P.TextRule:
-			firstLineLength = -1 // don't return ErrNoPayload when read last line
 			str = string(line)
 			str = strings.TrimSpace(str)
 			if len(str) == 0 {
@@ -228,6 +241,8 @@ func rulesParse(buf []byte, strategy ruleStrategy, format P.RuleFormat) (ruleStr
 			if len(schema.Payload) > 0 {
 				str = schema.Payload[0]
 			}
+		default:
+			return nil, ErrInvalidFormat
 		}
 
 		if str == "" {
