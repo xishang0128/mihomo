@@ -16,13 +16,13 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
-	"github.com/metacubex/mihomo/common/lru"
 	N "github.com/metacubex/mihomo/common/net"
+	"github.com/metacubex/mihomo/component/auth"
 	C "github.com/metacubex/mihomo/constant"
 	H "github.com/metacubex/mihomo/listener/http"
 )
 
-func HandleConn(c net.Conn, opt *Option, tunnel C.Tunnel, cache *lru.LruCache[string, bool], additions ...inbound.Addition) {
+func HandleConn(c net.Conn, opt *Option, tunnel C.Tunnel, authenticator auth.Authenticator, additions ...inbound.Addition) {
 	var (
 		clientIP   = netip.MustParseAddrPort(c.RemoteAddr().String()).Addr()
 		sourceAddr net.Addr
@@ -38,7 +38,7 @@ func HandleConn(c net.Conn, opt *Option, tunnel C.Tunnel, cache *lru.LruCache[st
 
 	conn := N.NewBufferedConn(c)
 
-	trusted := cache == nil // disable authenticate if cache is nil
+	trusted := authenticator == nil // disable authenticate if cache is nil
 	if !trusted {
 		trusted = clientIP.IsLoopback() || clientIP.IsUnspecified()
 	}
@@ -63,7 +63,7 @@ readLoop:
 		session.request.RemoteAddr = sourceAddr.String()
 
 		if !trusted {
-			session.response = H.Authenticate(session.request, cache)
+			session.response, _ = H.Authenticate(session.request, authenticator)
 
 			trusted = session.response == nil
 		}

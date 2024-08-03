@@ -6,8 +6,9 @@ import (
 	"net/http"
 
 	"github.com/metacubex/mihomo/common/cert"
-	"github.com/metacubex/mihomo/common/lru"
+	"github.com/metacubex/mihomo/component/auth"
 	C "github.com/metacubex/mihomo/constant"
+	authStore "github.com/metacubex/mihomo/listener/auth"
 )
 
 type Handler interface {
@@ -53,18 +54,13 @@ func (l *Listener) Close() error {
 
 // New the MITM proxy actually is a type of HTTP proxy
 func New(option *Option, tunnel C.Tunnel) (*Listener, error) {
-	return NewWithAuthenticate(option, tunnel, true)
+	return NewWithAuthenticate(option, tunnel, authStore.Authenticator())
 }
 
-func NewWithAuthenticate(option *Option, tunnel C.Tunnel, authenticate bool) (*Listener, error) {
+func NewWithAuthenticate(option *Option, tunnel C.Tunnel, authenticator auth.Authenticator) (*Listener, error) {
 	l, err := net.Listen("tcp", option.Addr)
 	if err != nil {
 		return nil, err
-	}
-
-	var c *lru.LruCache[string, bool]
-	if authenticate {
-		c = lru.New[string, bool](lru.WithAge[string, bool](90))
 	}
 
 	hl := &Listener{
@@ -81,7 +77,7 @@ func NewWithAuthenticate(option *Option, tunnel C.Tunnel, authenticate bool) (*L
 				}
 				continue
 			}
-			go HandleConn(conn, option, tunnel, c)
+			go HandleConn(conn, option, tunnel, authenticator)
 		}
 	}()
 

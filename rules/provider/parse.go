@@ -21,6 +21,7 @@ type ruleProviderSchema struct {
 	Behavior string `provider:"behavior"`
 	Path     string `provider:"path,omitempty"`
 	URL      string `provider:"url,omitempty"`
+	Proxy    string `provider:"proxy,omitempty"`
 	Format   string `provider:"format,omitempty"`
 	Interval int    `provider:"interval,omitempty"`
 }
@@ -31,28 +32,13 @@ func ParseRuleProvider(name string, mapping map[string]interface{}, parse func(t
 	if err := decoder.Decode(mapping, schema); err != nil {
 		return nil, err
 	}
-	var behavior P.RuleBehavior
-
-	switch schema.Behavior {
-	case "domain":
-		behavior = P.Domain
-	case "ipcidr":
-		behavior = P.IPCIDR
-	case "classical":
-		behavior = P.Classical
-	default:
-		return nil, fmt.Errorf("unsupported behavior type: %s", schema.Behavior)
+	behavior, err := P.ParseBehavior(schema.Behavior)
+	if err != nil {
+		return nil, err
 	}
-
-	var format P.RuleFormat
-
-	switch schema.Format {
-	case "", "yaml":
-		format = P.YamlRule
-	case "text":
-		format = P.TextRule
-	default:
-		return nil, fmt.Errorf("unsupported format type: %s", schema.Format)
+	format, err := P.ParseRuleFormat(schema.Format)
+	if err != nil {
+		return nil, err
 	}
 
 	var vehicle P.Vehicle
@@ -61,17 +47,14 @@ func ParseRuleProvider(name string, mapping map[string]interface{}, parse func(t
 		path := C.Path.Resolve(schema.Path)
 		vehicle = resource.NewFileVehicle(path)
 	case "http":
+		path := C.Path.GetPathByHash("rules", schema.URL)
 		if schema.Path != "" {
-			path := C.Path.Resolve(schema.Path)
+			path = C.Path.Resolve(schema.Path)
 			if !features.CMFA && !C.Path.IsSafePath(path) {
 				return nil, fmt.Errorf("%w: %s", errSubPath, path)
 			}
-			vehicle = resource.NewHTTPVehicle(schema.URL, path)
-		} else {
-			path := C.Path.GetPathByHash("rules", schema.URL)
-			vehicle = resource.NewHTTPVehicle(schema.URL, path)
 		}
-
+		vehicle = resource.NewHTTPVehicle(schema.URL, path, schema.Proxy, nil)
 	default:
 		return nil, fmt.Errorf("unsupported vehicle type: %s", schema.Type)
 	}

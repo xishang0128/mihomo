@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	C "github.com/metacubex/mihomo/constant"
+	P "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/log"
 )
 
@@ -14,6 +15,10 @@ type classicalStrategy struct {
 	shouldResolveIP   bool
 	shouldFindProcess bool
 	parse             func(tp, payload, target string, params []string) (parsed C.Rule, parseErr error)
+}
+
+func (c *classicalStrategy) Behavior() P.RuleBehavior {
+	return P.Classical
 }
 
 func (c *classicalStrategy) Match(metadata *C.Metadata) bool {
@@ -77,7 +82,7 @@ func ruleParse(ruleRaw string) (string, string, []string) {
 	} else if len(item) == 2 {
 		return item[0], item[1], nil
 	} else if len(item) > 2 {
-		if item[0] == "NOT" || item[0] == "OR" || item[0] == "AND" || item[0] == "SUB-RULE" || item[0] == "DOMAIN-REGEX" {
+		if item[0] == "NOT" || item[0] == "OR" || item[0] == "AND" || item[0] == "SUB-RULE" || item[0] == "DOMAIN-REGEX" || item[0] == "PROCESS-NAME-REGEX" || item[0] == "PROCESS-PATH-REGEX" {
 			return item[0], strings.Join(item[1:len(item)], ","), nil
 		} else {
 			return item[0], item[1], item[2:]

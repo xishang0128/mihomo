@@ -22,8 +22,10 @@ const (
 	InUser
 	InName
 	InType
-	Process
+	ProcessName
 	ProcessPath
+	ProcessNameRegex
+	ProcessPathRegex
 	RuleSet
 	Network
 	Uid
@@ -78,10 +80,14 @@ func (rt RuleType) String() string {
 		return "InName"
 	case InType:
 		return "InType"
-	case Process:
-		return "Process"
+	case ProcessName:
+		return "ProcessName"
 	case ProcessPath:
 		return "ProcessPath"
+	case ProcessNameRegex:
+		return "ProcessNameRegex"
+	case ProcessPathRegex:
+		return "ProcessPathRegex"
 	case UserAgent:
 		return "UserAgent"
 	case UrlRegex:
@@ -116,4 +122,5 @@ type Rule interface {
 	Payload() string
 	ShouldResolveIP() bool
 	ShouldFindProcess() bool
+	ProviderNames() []string
 }

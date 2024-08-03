@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"runtime"
 	"strings"
 	"time"
@@ -124,8 +125,8 @@ func (pp *proxySetProvider) getSubscriptionInfo() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*90)
 		defer cancel()
-		resp, err := mihomoHttp.HttpRequest(ctx, pp.Vehicle().(*resource.HTTPVehicle).Url(),
-			http.MethodGet, http.Header{"User-Agent": {C.UA}}, nil)
+		resp, err := mihomoHttp.HttpRequestWithProxy(ctx, pp.Vehicle().(*resource.HTTPVehicle).Url(),
+			http.MethodGet, http.Header{"User-Agent": {C.UA}}, nil, pp.Vehicle().Proxy())
 		if err != nil {
 			return
 		}
@@ -133,8 +134,8 @@ func (pp *proxySetProvider) getSubscriptionInfo() {
 
 		userInfoStr := strings.TrimSpace(resp.Header.Get("subscription-userinfo"))
 		if userInfoStr == "" {
-			resp2, err := mihomoHttp.HttpRequest(ctx, pp.Vehicle().(*resource.HTTPVehicle).Url(),
-				http.MethodGet, http.Header{"User-Agent": {"Quantumultx"}}, nil)
+			resp2, err := mihomoHttp.HttpRequestWithProxy(ctx, pp.Vehicle().(*resource.HTTPVehicle).Url(),
+				http.MethodGet, http.Header{"User-Agent": {"Quantumultx"}}, nil, pp.Vehicle().Proxy())
 			if err != nil {
 				return
 			}
@@ -169,7 +170,7 @@ func stopProxyProvider(pd *ProxySetProvider) {
 }
 
 func NewProxySetProvider(name string, interval time.Duration, filter string, excludeFilter string, excludeType string, dialerProxy string, override OverrideSchema, vehicle types.Vehicle, hc *HealthCheck) (*ProxySetProvider, error) {
-	excludeFilterReg, err := regexp2.Compile(excludeFilter, 0)
+	excludeFilterReg, err := regexp2.Compile(excludeFilter, regexp2.None)
 	if err != nil {
 		return nil, fmt.Errorf("invalid excludeFilter regex: %w", err)
 	}
@@ -180,7 +181,7 @@ func NewProxySetProvider(name string, interval time.Duration, filter string, exc
 
 	var filterRegs []*regexp2.Regexp
 	for _, filter := range strings.Split(filter, "`") {
-		filterReg, err := regexp2.Compile(filter, 0)
+		filterReg, err := regexp2.Compile(filter, regexp2.None)
 		if err != nil {
 			return nil, fmt.Errorf("invalid filter regex: %w", err)
 		}
@@ -356,12 +357,12 @@ func proxiesParseAndFilter(filter string, excludeFilter string, excludeTypeArray
 					continue
 				}
 				if len(excludeFilter) > 0 {
-					if mat, _ := excludeFilterReg.FindStringMatch(name); mat != nil {
+					if mat, _ := excludeFilterReg.MatchString(name); mat {
 						continue
 					}
 				}
 				if len(filter) > 0 {
-					if mat, _ := filterReg.FindStringMatch(name); mat == nil {
+					if mat, _ := filterReg.MatchString(name); !mat {
 						continue
 					}
 				}
@@ -373,37 +374,23 @@ func proxiesParseAndFilter(filter string, excludeFilter string, excludeTypeArray
 					mapping["dialer-proxy"] = dialerProxy
 				}
 
-				if override.UDP != nil {
-					mapping["udp"] = *override.UDP
-				}
-				if override.Up != nil {
-					mapping["up"] = *override.Up
-				}
-				if override.Down != nil {
-					mapping["down"] = *override.Down
-				}
-				if override.DialerProxy != nil {
-					mapping["dialer-proxy"] = *override.DialerProxy
-				}
-				if override.SkipCertVerify != nil {
-					mapping["skip-cert-verify"] = *override.SkipCertVerify
-				}
-				if override.Interface != nil {
-					mapping["interface-name"] = *override.Interface
-				}
-				if override.RoutingMark != nil {
-					mapping["routing-mark"] = *override.RoutingMark
-				}
-				if override.IPVersion != nil {
-					mapping["ip-version"] = *override.IPVersion
-				}
-				if override.AdditionalPrefix != nil {
-					name := mapping["name"].(string)
-					mapping["name"] = *override.AdditionalPrefix + name
-				}
-				if override.AdditionalSuffix != nil {
-					name := mapping["name"].(string)
-					mapping["name"] = name + *override.AdditionalSuffix
+				val := reflect.ValueOf(override)
+				for i := 0; i < val.NumField(); i++ {
+					field := val.Field(i)
+					if field.IsNil() {
+						continue
+					}
+					fieldName := strings.Split(val.Type().Field(i).Tag.Get("provider"), ",")[0]
+					switch fieldName {
+					case "additional-prefix":
+						name := mapping["name"].(string)
+						mapping["name"] = *field.Interface().(*string) + name
+					case "additional-suffix":
+						name := mapping["name"].(string)
+						mapping["name"] = name + *field.Interface().(*string)
+					default:
+						mapping[fieldName] = field.Elem().Interface()
+					}
 				}
 
 				proxy, err := adapter.ParseProxy(mapping)
