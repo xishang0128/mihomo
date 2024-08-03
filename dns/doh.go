@@ -61,12 +61,12 @@ type dnsOverHTTPS struct {
 	// for this upstream.
 	quicConfig      *quic.Config
 	quicConfigGuard sync.Mutex
-	url             *url.URL
-	r               *Resolver
-	httpVersions    []C.HTTPVersion
-	proxyAdapter    C.ProxyAdapter
-	proxyName       string
-	addr            string
+
+	url            *url.URL
+	httpVersions   []C.HTTPVersion
+	dialer         *dnsDialer
+	addr           string
+	skipCertVerify bool
 }
 
 // type check
@@ -85,16 +85,18 @@ func newDoHClient(urlString string, r *Resolver, preferH3 bool, params map[strin
 	}
 
 	doh := &dnsOverHTTPS{
-		url:          u,
-		addr:         u.String(),
-		r:            r,
-		proxyAdapter: proxyAdapter,
-		proxyName:    proxyName,
+		url:    u,
+		addr:   u.String(),
+		dialer: newDNSDialer(r, proxyAdapter, proxyName),
 		quicConfig: &quic.Config{
 			KeepAlivePeriod: QUICKeepAlivePeriod,
 			TokenStore:      newQUICTokenStore(),
 		},
 		httpVersions: httpVersions,
+	}
+
+	if params["skip-cert-verify"] == "true" {
+		doh.skipCertVerify = true
 	}
 
 	runtime.SetFinalizer(doh, (*dnsOverHTTPS).Close)
@@ -106,6 +108,7 @@ func newDoHClient(urlString string, r *Resolver, preferH3 bool, params map[strin
 func (doh *dnsOverHTTPS) Address() string {
 	return doh.addr
 }
+
 func (doh *dnsOverHTTPS) ExchangeContext(ctx context.Context, m *D.Msg) (msg *D.Msg, err error) {
 	// Quote from https://www.rfc-editor.org/rfc/rfc8484.html:
 	// In order to maximize HTTP cache friendliness, DoH clients using media
@@ -182,19 +185,9 @@ func (doh *dnsOverHTTPS) closeClient(client *http.Client) (err error) {
 	return nil
 }
 
-// exchangeHTTPS logs the request and its result and calls exchangeHTTPSClient.
-func (doh *dnsOverHTTPS) exchangeHTTPS(ctx context.Context, client *http.Client, req *D.Msg) (resp *D.Msg, err error) {
-	resp, err = doh.exchangeHTTPSClient(ctx, client, req)
-	return resp, err
-}
-
-// exchangeHTTPSClient sends the DNS query to a DoH resolver using the specified
+// exchangeHTTPS sends the DNS query to a DoH resolver using the specified
 // http.Client instance.
-func (doh *dnsOverHTTPS) exchangeHTTPSClient(
-	ctx context.Context,
-	client *http.Client,
-	req *D.Msg,
-) (resp *D.Msg, err error) {
+func (doh *dnsOverHTTPS) exchangeHTTPS(ctx context.Context, client *http.Client, req *D.Msg) (resp *D.Msg, err error) {
 	buf, err := req.Pack()
 	if err != nil {
 		return nil, fmt.Errorf("packing message: %w", err)
@@ -208,24 +201,24 @@ func (doh *dnsOverHTTPS) exchangeHTTPSClient(
 		method = http3.MethodGet0RTT
 	}
 
-	url := doh.url
-	url.RawQuery = fmt.Sprintf("dns=%s", base64.RawURLEncoding.EncodeToString(buf))
-	httpReq, err := http.NewRequestWithContext(ctx, method, url.String(), nil)
+	requestUrl := *doh.url // don't modify origin url
+	requestUrl.RawQuery = fmt.Sprintf("dns=%s", base64.RawURLEncoding.EncodeToString(buf))
+	httpReq, err := http.NewRequestWithContext(ctx, method, requestUrl.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating http request to %s: %w", url, err)
+		return nil, fmt.Errorf("creating http request to %s: %w", doh.url, err)
 	}
 
 	httpReq.Header.Set("Accept", "application/dns-message")
 	httpReq.Header.Set("User-Agent", "")
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("requesting %s: %w", url, err)
+		return nil, fmt.Errorf("requesting %s: %w", doh.url, err)
 	}
 	defer httpResp.Body.Close()
 
 	body, err := io.ReadAll(httpResp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", url, err)
+		return nil, fmt.Errorf("reading %s: %w", doh.url, err)
 	}
 
 	if httpResp.StatusCode != http.StatusOK {
@@ -234,7 +227,7 @@ func (doh *dnsOverHTTPS) exchangeHTTPSClient(
 				"expected status %d, got %d from %s",
 				http.StatusOK,
 				httpResp.StatusCode,
-				url,
+				doh.url,
 			)
 	}
 
@@ -243,7 +236,7 @@ func (doh *dnsOverHTTPS) exchangeHTTPSClient(
 	if err != nil {
 		return nil, fmt.Errorf(
 			"unpacking response from %s: body is %s: %w",
-			url,
+			doh.url,
 			body,
 			err,
 		)
@@ -377,9 +370,21 @@ func (doh *dnsOverHTTPS) createClient(ctx context.Context) (*http.Client, error)
 // HTTP3 is enabled in the upstream options).  If this attempt is successful,
 // it returns an HTTP3 transport, otherwise it returns the H1/H2 transport.
 func (doh *dnsOverHTTPS) createTransport(ctx context.Context) (t http.RoundTripper, err error) {
+	transport := &http.Transport{
+		DisableCompression: true,
+		DialContext:        doh.dialer.DialContext,
+		IdleConnTimeout:    transportDefaultIdleConnTimeout,
+		MaxConnsPerHost:    dohMaxConnsPerHost,
+		MaxIdleConns:       dohMaxIdleConns,
+	}
+
+	if doh.url.Scheme == "http" {
+		return transport, nil
+	}
+
 	tlsConfig := ca.GetGlobalTLSConfig(
 		&tls.Config{
-			InsecureSkipVerify:     false,
+			InsecureSkipVerify:     doh.skipCertVerify,
 			MinVersion:             tls.VersionTLS12,
 			SessionTicketsDisabled: false,
 		})
@@ -388,13 +393,13 @@ func (doh *dnsOverHTTPS) createTransport(ctx context.Context) (t http.RoundTripp
 		nextProtos = append(nextProtos, string(v))
 	}
 	tlsConfig.NextProtos = nextProtos
-	dialContext := getDialHandler(doh.r, doh.proxyAdapter, doh.proxyName)
+	transport.TLSClientConfig = tlsConfig
 
 	if slices.Contains(doh.httpVersions, C.HTTPVersion3) {
 		// First, we attempt to create an HTTP3 transport.  If the probe QUIC
 		// connection is established successfully, we'll be using HTTP3 for this
 		// upstream.
-		transportH3, err := doh.createTransportH3(ctx, tlsConfig, dialContext)
+		transportH3, err := doh.createTransportH3(ctx, tlsConfig)
 		if err == nil {
 			log.Debugln("[%s] using HTTP/3 for this upstream: QUIC was faster", doh.url.String())
 			return transportH3, nil
@@ -407,18 +412,10 @@ func (doh *dnsOverHTTPS) createTransport(ctx context.Context) (t http.RoundTripp
 		return nil, errors.New("HTTP1/1 and HTTP2 are not supported by this upstream")
 	}
 
-	transport := &http.Transport{
-		TLSClientConfig:    tlsConfig,
-		DisableCompression: true,
-		DialContext:        dialContext,
-		IdleConnTimeout:    transportDefaultIdleConnTimeout,
-		MaxConnsPerHost:    dohMaxConnsPerHost,
-		MaxIdleConns:       dohMaxIdleConns,
-		// Since we have a custom DialContext, we need to use this field to
-		// make golang http.Client attempt to use HTTP/2. Otherwise, it would
-		// only be used when negotiated on the TLS level.
-		ForceAttemptHTTP2: true,
-	}
+	// Since we have a custom DialContext, we need to use this field to
+	// make golang http.Client attempt to use HTTP/2. Otherwise, it would
+	// only be used when negotiated on the TLS level.
+	transport.ForceAttemptHTTP2 = true
 
 	// Explicitly configure transport to use HTTP/2.
 	//
@@ -490,13 +487,12 @@ func (h *http3Transport) Close() (err error) {
 func (doh *dnsOverHTTPS) createTransportH3(
 	ctx context.Context,
 	tlsConfig *tls.Config,
-	dialContext dialHandler,
 ) (roundTripper http.RoundTripper, err error) {
 	if !doh.supportsH3() {
 		return nil, errors.New("HTTP3 support is not enabled")
 	}
 
-	addr, err := doh.probeH3(ctx, tlsConfig, dialContext)
+	addr, err := doh.probeH3(ctx, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +511,7 @@ func (doh *dnsOverHTTPS) createTransportH3(
 		},
 		DisableCompression: true,
 		TLSClientConfig:    tlsConfig,
-		QuicConfig:         doh.getQUICConfig(),
+		QUICConfig:         doh.getQUICConfig(),
 	}
 
 	return &http3Transport{baseTransport: rt}, nil
@@ -534,7 +530,7 @@ func (doh *dnsOverHTTPS) dialQuic(ctx context.Context, addr string, tlsCfg *tls.
 		IP:   net.ParseIP(ip),
 		Port: portInt,
 	}
-	conn, err := listenPacket(ctx, doh.proxyAdapter, doh.proxyName, "udp", addr, doh.r)
+	conn, err := doh.dialer.ListenPacket(ctx, "udp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -557,12 +553,11 @@ func (doh *dnsOverHTTPS) dialQuic(ctx context.Context, addr string, tlsCfg *tls.
 func (doh *dnsOverHTTPS) probeH3(
 	ctx context.Context,
 	tlsConfig *tls.Config,
-	dialContext dialHandler,
 ) (addr string, err error) {
 	// We're using bootstrapped address instead of what's passed to the function
 	// it does not create an actual connection, but it helps us determine
 	// what IP is actually reachable (when there are v4/v6 addresses).
-	rawConn, err := dialContext(ctx, "udp", doh.url.Host)
+	rawConn, err := doh.dialer.DialContext(ctx, "udp", doh.url.Host)
 	if err != nil {
 		return "", fmt.Errorf("failed to dial: %w", err)
 	}
@@ -592,7 +587,7 @@ func (doh *dnsOverHTTPS) probeH3(
 	chQuic := make(chan error, 1)
 	chTLS := make(chan error, 1)
 	go doh.probeQUIC(ctx, addr, probeTLSCfg, chQuic)
-	go doh.probeTLS(ctx, dialContext, probeTLSCfg, chTLS)
+	go doh.probeTLS(ctx, probeTLSCfg, chTLS)
 
 	select {
 	case quicErr := <-chQuic:
@@ -635,10 +630,10 @@ func (doh *dnsOverHTTPS) probeQUIC(ctx context.Context, addr string, tlsConfig *
 
 // probeTLS attempts to establish a TLS connection to the specified address. We
 // run probeQUIC and probeTLS in parallel and see which one is faster.
-func (doh *dnsOverHTTPS) probeTLS(ctx context.Context, dialContext dialHandler, tlsConfig *tls.Config, ch chan error) {
+func (doh *dnsOverHTTPS) probeTLS(ctx context.Context, tlsConfig *tls.Config, ch chan error) {
 	startTime := time.Now()
 
-	conn, err := doh.tlsDial(ctx, dialContext, "tcp", tlsConfig)
+	conn, err := doh.tlsDial(ctx, "tcp", tlsConfig)
 	if err != nil {
 		ch <- fmt.Errorf("opening TLS connection: %w", err)
 		return
@@ -694,10 +689,10 @@ func isHTTP3(client *http.Client) (ok bool) {
 
 // tlsDial is basically the same as tls.DialWithDialer, but we will call our own
 // dialContext function to get connection.
-func (doh *dnsOverHTTPS) tlsDial(ctx context.Context, dialContext dialHandler, network string, config *tls.Config) (*tls.Conn, error) {
+func (doh *dnsOverHTTPS) tlsDial(ctx context.Context, network string, config *tls.Config) (*tls.Conn, error) {
 	// We're using bootstrapped address instead of what's passed
 	// to the function.
-	rawConn, err := dialContext(ctx, network, doh.url.Host)
+	rawConn, err := doh.dialer.DialContext(ctx, network, doh.url.Host)
 	if err != nil {
 		return nil, err
 	}
@@ -709,7 +704,8 @@ func (doh *dnsOverHTTPS) tlsDial(ctx context.Context, dialContext dialHandler, n
 	err = conn.SetDeadline(time.Now().Add(dialTimeout))
 	if err != nil {
 		// Must not happen in normal circumstances.
-		panic(fmt.Errorf("cannot set deadline: %w", err))
+		log.Errorln("cannot set deadline: %v", err)
+		return nil, err
 	}
 
 	err = conn.Handshake()

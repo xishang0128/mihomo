@@ -2,7 +2,7 @@ package rules
 
 import (
 	"fmt"
-	
+
 	C "github.com/metacubex/mihomo/constant"
 	RC "github.com/metacubex/mihomo/rules/common"
 	"github.com/metacubex/mihomo/rules/logic"
@@ -17,11 +17,20 @@ func ParseRule(tp, payload, target string, params []string, subRules map[string]
 		parsed = RC.NewDomainSuffix(payload, target)
 	case "DOMAIN-KEYWORD":
 		parsed = RC.NewDomainKeyword(payload, target)
+	case "DOMAIN-REGEX":
+		parsed, parseErr = RC.NewDomainRegex(payload, target)
 	case "GEOSITE":
 		parsed, parseErr = RC.NewGEOSITE(payload, target)
 	case "GEOIP":
 		noResolve := RC.HasNoResolve(params)
-		parsed, parseErr = RC.NewGEOIP(payload, target, noResolve)
+		parsed, parseErr = RC.NewGEOIP(payload, target, false, noResolve)
+	case "SRC-GEOIP":
+		parsed, parseErr = RC.NewGEOIP(payload, target, true, true)
+	case "IP-ASN":
+		noResolve := RC.HasNoResolve(params)
+		parsed, parseErr = RC.NewIPASN(payload, target, false, noResolve)
+	case "SRC-IP-ASN":
+		parsed, parseErr = RC.NewIPASN(payload, target, true, true)
 	case "IP-CIDR", "IP-CIDR6":
 		noResolve := RC.HasNoResolve(params)
 		parsed, parseErr = RC.NewIPCIDR(payload, target, RC.WithIPCIDRNoResolve(noResolve))
@@ -41,9 +50,13 @@ func ParseRule(tp, payload, target string, params []string, subRules map[string]
 	case "DSCP":
 		parsed, parseErr = RC.NewDSCP(payload, target)
 	case "PROCESS-NAME":
-		parsed, parseErr = RC.NewProcess(payload, target, true)
+		parsed, parseErr = RC.NewProcess(payload, target, true, false)
 	case "PROCESS-PATH":
-		parsed, parseErr = RC.NewProcess(payload, target, false)
+		parsed, parseErr = RC.NewProcess(payload, target, false, false)
+	case "PROCESS-NAME-REGEX":
+		parsed, parseErr = RC.NewProcess(payload, target, true, true)
+	case "PROCESS-PATH-REGEX":
+		parsed, parseErr = RC.NewProcess(payload, target, false, true)
 	case "NETWORK":
 		parsed, parseErr = RC.NewNetworkType(payload, target)
 	case "UID":

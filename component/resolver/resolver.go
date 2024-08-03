@@ -12,8 +12,8 @@ import (
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/trie"
 
+	"github.com/metacubex/randv2"
 	"github.com/miekg/dns"
-	"github.com/zhangyunhao116/fastrand"
 )
 
 var (
@@ -93,7 +93,7 @@ func ResolveIPv4WithResolver(ctx context.Context, host string, r Resolver) (neti
 	} else if len(ips) == 0 {
 		return netip.Addr{}, fmt.Errorf("%w: %s", ErrIPNotFound, host)
 	}
-	return ips[fastrand.Intn(len(ips))], nil
+	return ips[randv2.IntN(len(ips))], nil
 }
 
 // ResolveIPv4 with a host, return ipv4
@@ -149,7 +149,7 @@ func ResolveIPv6WithResolver(ctx context.Context, host string, r Resolver) (neti
 	} else if len(ips) == 0 {
 		return netip.Addr{}, fmt.Errorf("%w: %s", ErrIPNotFound, host)
 	}
-	return ips[fastrand.Intn(len(ips))], nil
+	return ips[randv2.IntN(len(ips))], nil
 }
 
 func ResolveIPv6(ctx context.Context, host string) (netip.Addr, error) {
@@ -200,9 +200,9 @@ func ResolveIPWithResolver(ctx context.Context, host string, r Resolver) (netip.
 	}
 	ipv4s, ipv6s := SortationAddr(ips)
 	if len(ipv4s) > 0 {
-		return ipv4s[fastrand.Intn(len(ipv4s))], nil
+		return ipv4s[randv2.IntN(len(ipv4s))], nil
 	}
-	return ipv6s[fastrand.Intn(len(ipv6s))], nil
+	return ipv6s[randv2.IntN(len(ipv6s))], nil
 }
 
 // ResolveIP with a host, return ip and priority return TypeA
@@ -213,11 +213,7 @@ func ResolveIP(ctx context.Context, host string) (netip.Addr, error) {
 // ResolveIPv4ProxyServerHost proxies server host only
 func ResolveIPv4ProxyServerHost(ctx context.Context, host string) (netip.Addr, error) {
 	if ProxyServerHostResolver != nil {
-		if ip, err := ResolveIPv4WithResolver(ctx, host, ProxyServerHostResolver); err != nil {
-			return ResolveIPv4(ctx, host)
-		} else {
-			return ip, nil
-		}
+		return ResolveIPv4WithResolver(ctx, host, ProxyServerHostResolver)
 	}
 	return ResolveIPv4(ctx, host)
 }
@@ -225,11 +221,7 @@ func ResolveIPv4ProxyServerHost(ctx context.Context, host string) (netip.Addr, e
 // ResolveIPv6ProxyServerHost proxies server host only
 func ResolveIPv6ProxyServerHost(ctx context.Context, host string) (netip.Addr, error) {
 	if ProxyServerHostResolver != nil {
-		if ip, err := ResolveIPv6WithResolver(ctx, host, ProxyServerHostResolver); err != nil {
-			return ResolveIPv6(ctx, host)
-		} else {
-			return ip, nil
-		}
+		return ResolveIPv6WithResolver(ctx, host, ProxyServerHostResolver)
 	}
 	return ResolveIPv6(ctx, host)
 }
@@ -237,11 +229,7 @@ func ResolveIPv6ProxyServerHost(ctx context.Context, host string) (netip.Addr, e
 // ResolveProxyServerHost proxies server host only
 func ResolveProxyServerHost(ctx context.Context, host string) (netip.Addr, error) {
 	if ProxyServerHostResolver != nil {
-		if ip, err := ResolveIPWithResolver(ctx, host, ProxyServerHostResolver); err != nil {
-			return ResolveIP(ctx, host)
-		} else {
-			return ip, err
-		}
+		return ResolveIPWithResolver(ctx, host, ProxyServerHostResolver)
 	}
 	return ResolveIP(ctx, host)
 }

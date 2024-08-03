@@ -16,7 +16,6 @@ import (
 	"time"
 
 	mihomoHttp "github.com/metacubex/mihomo/component/http"
-	"github.com/metacubex/mihomo/constant"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 
@@ -52,6 +51,10 @@ func init() {
 	if runtime.GOARCH == "amd64" && cpuid.CPU.X64Level() < 3 {
 		amd64Compatible = "-compatible"
 	}
+	if !strings.HasPrefix(C.Version, "alpha") {
+		baseURL = "https://github.com/MetaCubeX/mihomo/releases/latest/download/mihomo"
+		versionURL = "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt"
+	}
 }
 
 type updateError struct {
@@ -64,7 +67,7 @@ func (e *updateError) Error() string {
 
 // Update performs the auto-updater.  It returns an error if the updater failed.
 // If firstRun is true, it assumes the configuration file doesn't exist.
-func Update(execPath string) (err error) {
+func UpdateCore(execPath string) (err error) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -73,9 +76,9 @@ func Update(execPath string) (err error) {
 		return err
 	}
 
-	log.Infoln("current version %s, latest version %s", constant.Version, latestVersion)
+	log.Infoln("current version %s, latest version %s", C.Version, latestVersion)
 
-	if latestVersion == constant.Version {
+	if latestVersion == C.Version {
 		err := &updateError{Message: "already using latest version"}
 		return err
 	}
@@ -137,6 +140,8 @@ func prepare(exePath string) (err error) {
 
 	if runtime.GOOS == "windows" {
 		updateExeName = "mihomo" + "-" + runtime.GOOS + "-" + runtime.GOARCH + amd64Compatible + ".exe"
+	} else if runtime.GOOS == "android" && runtime.GOARCH == "arm64" {
+		updateExeName = "mihomo-android-arm64-v8"
 	} else {
 		updateExeName = "mihomo" + "-" + runtime.GOOS + "-" + runtime.GOARCH + amd64Compatible
 	}
@@ -440,7 +445,11 @@ func updateDownloadURL() {
 		middle = fmt.Sprintf("-%s-%s%s-%s", runtime.GOOS, runtime.GOARCH, goarm, latestVersion)
 	} else if runtime.GOARCH == "arm64" {
 		//-linux-arm64-alpha-e552b54.gz
-		middle = fmt.Sprintf("-%s-%s-%s", runtime.GOOS, runtime.GOARCH, latestVersion)
+		if runtime.GOOS == "android" {
+			middle = fmt.Sprintf("-%s-%s-v8-%s", runtime.GOOS, runtime.GOARCH, latestVersion)
+		} else {
+			middle = fmt.Sprintf("-%s-%s-%s", runtime.GOOS, runtime.GOARCH, latestVersion)
+		}
 	} else if isMIPS(runtime.GOARCH) && gomips != "" {
 		middle = fmt.Sprintf("-%s-%s-%s-%s", runtime.GOOS, runtime.GOARCH, gomips, latestVersion)
 	} else {

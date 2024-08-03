@@ -97,7 +97,7 @@ func ApplyConfig(cfg *config.Config, force bool) {
 	updateHosts(cfg.Hosts)
 	updateGeneral(cfg.General)
 	updateNTP(cfg.NTP)
-	updateDNS(cfg.DNS, cfg.RuleProviders, cfg.General.IPv6)
+	updateDNS(cfg.DNS, cfg.General.IPv6)
 	updateListeners(cfg.General, cfg.Listeners, force)
 	updateIPTables(cfg)
 	updateTun(cfg.General)
@@ -146,15 +146,18 @@ func GetGeneral() *config.General {
 			AllowLan:          listener.AllowLan(),
 			BindAddress:       listener.BindAddress(),
 		},
-		Controller:     config.Controller{},
-		Mode:           tunnel.Mode(),
-		LogLevel:       log.Level(),
-		IPv6:           !resolver.DisableIPv6,
-		GeodataLoader:  G.LoaderName(),
-		GeositeMatcher: G.SiteMatcherName(),
-		Interface:      dialer.DefaultInterface.Load(),
-		Sniffing:       tunnel.IsSniffing(),
-		TCPConcurrent:  dialer.GetTcpConcurrent(),
+		Controller:        config.Controller{},
+		Mode:              tunnel.Mode(),
+		LogLevel:          log.Level(),
+		IPv6:              !resolver.DisableIPv6,
+		GeodataMode:       G.GeodataMode(),
+		GeoAutoUpdate:     G.GeoAutoUpdate(),
+		GeoUpdateInterval: G.GeoUpdateInterval(),
+		GeodataLoader:     G.LoaderName(),
+		GeositeMatcher:    G.SiteMatcherName(),
+		Interface:         dialer.DefaultInterface.Load(),
+		Sniffing:          tunnel.IsSniffing(),
+		TCPConcurrent:     dialer.GetTcpConcurrent(),
 	}
 
 	return general
@@ -194,6 +197,7 @@ func updateExperimental(c *config.Config) {
 	if c.Experimental.QUICGoDisableECN {
 		_ = os.Setenv("QUIC_GO_DISABLE_ECN", strconv.FormatBool(true))
 	}
+	dialer.GetIP4PEnable(c.Experimental.IP4PEnable)
 }
 
 func updateNTP(c *config.NTP) {
@@ -207,7 +211,7 @@ func updateNTP(c *config.NTP) {
 	}
 }
 
-func updateDNS(c *config.DNS, ruleProvider map[string]provider.RuleProvider, generalIPv6 bool) {
+func updateDNS(c *config.DNS, generalIPv6 bool) {
 	if !c.Enable {
 		resolver.DefaultResolver = nil
 		resolver.DefaultHostMapper = nil
@@ -233,7 +237,7 @@ func updateDNS(c *config.DNS, ruleProvider map[string]provider.RuleProvider, gen
 		Default:        c.DefaultNameserver,
 		Policy:         c.NameServerPolicy,
 		ProxyServer:    c.ProxyServerNameserver,
-		RuleProviders:  ruleProvider,
+		Tunnel:         tunnel.Tunnel,
 		CacheAlgorithm: c.CacheAlgorithm,
 	}
 
@@ -249,6 +253,7 @@ func updateDNS(c *config.DNS, ruleProvider map[string]provider.RuleProvider, gen
 	resolver.DefaultResolver = r
 	resolver.DefaultHostMapper = m
 	resolver.DefaultLocalServer = dns.NewLocalServer(r, m)
+	resolver.UseSystemHosts = c.UseSystemHosts
 
 	if pr.Invalid() {
 		resolver.ProxyServerHostResolver = pr
@@ -350,7 +355,7 @@ func updateTun(general *config.General) {
 		return
 	}
 	listener.ReCreateTun(general.Tun, tunnel.Tunnel)
-	listener.ReCreateRedirToTun(general.Tun.RedirectToTun)
+	listener.ReCreateRedirToTun(general.EBpf.RedirectToTun)
 }
 
 func updateSniffer(sniffer *config.Sniffer) {
@@ -475,6 +480,9 @@ func updateIPTables(cfg *config.Config) {
 		bypass           = iptables.Bypass
 		tProxyPort       = cfg.General.TProxyPort
 		dnsCfg           = cfg.DNS
+		DnsRedirect      = iptables.DnsRedirect
+
+		dnsPort netip.AddrPort
 	)
 
 	if tProxyPort == 0 {
@@ -482,26 +490,26 @@ func updateIPTables(cfg *config.Config) {
 		return
 	}
 
-	if !dnsCfg.Enable {
-		err = fmt.Errorf("DNS server must be enable")
-		return
-	}
+	if DnsRedirect {
+		if !dnsCfg.Enable {
+			err = fmt.Errorf("DNS server must be enable")
+			return
+		}
 
-	dnsPort, err := netip.ParseAddrPort(dnsCfg.Listen)
-	if err != nil {
-		err = fmt.Errorf("DNS server must be correct")
-		return
+		dnsPort, err = netip.ParseAddrPort(dnsCfg.Listen)
+		if err != nil {
+			err = fmt.Errorf("DNS server must be correct")
+			return
+		}
 	}
 
 	if iptables.InboundInterface != "" {
 		inboundInterface = iptables.InboundInterface
 	}
 
-	if dialer.DefaultRoutingMark.Load() == 0 {
-		dialer.DefaultRoutingMark.Store(2158)
-	}
+	dialer.DefaultRoutingMark.CompareAndSwap(0, 2158)
 
-	err = tproxy.SetTProxyIPTables(inboundInterface, bypass, uint16(tProxyPort), dnsPort.Port())
+	err = tproxy.SetTProxyIPTables(inboundInterface, bypass, uint16(tProxyPort), DnsRedirect, dnsPort.Port())
 	if err != nil {
 		return
 	}
