@@ -19,6 +19,7 @@ const (
 	DstPort
 	InPort
 	DSCP
+	Mac
 	InUser
 	InName
 	InType
@@ -98,6 +99,8 @@ func (rt RuleType) String() string {
 		return "Uid"
 	case SubRules:
 		return "SubRules"
+	case Mac:
+		return "Mac"
 	case AND:
 		return "AND"
 	case OR:

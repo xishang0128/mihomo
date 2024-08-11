@@ -37,6 +37,7 @@ func (d *DNSDialer) DialContext(ctx context.Context, network, addr string) (net.
 	metadata := &C.Metadata{
 		NetWork: C.TCP,
 		Type:    C.INNER,
+		Process: C.Name,
 	}
 	err := metadata.SetRemoteAddress(addr) // tcp can resolve host by remote
 	if err != nil {

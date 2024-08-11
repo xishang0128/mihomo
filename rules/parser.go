@@ -49,6 +49,8 @@ func ParseRule(tp, payload, target string, params []string, subRules map[string]
 		parsed, parseErr = RC.NewPort(payload, target, C.InPort)
 	case "DSCP":
 		parsed, parseErr = RC.NewDSCP(payload, target)
+	case "MAC", "SRC-MAC":
+		parsed, parseErr = RC.NewMAC(payload, target)
 	case "PROCESS-NAME":
 		parsed, parseErr = RC.NewProcess(payload, target, true, false)
 	case "PROCESS-PATH":
