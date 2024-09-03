@@ -9,8 +9,9 @@ import (
 
 	"github.com/metacubex/mihomo/component/profile/cachefile"
 	"github.com/metacubex/mihomo/component/trie"
+	C "github.com/metacubex/mihomo/constant"
 
-	"github.com/sagernet/bbolt"
+	"github.com/metacubex/bbolt"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -150,11 +151,12 @@ func TestPool_CycleUsed(t *testing.T) {
 func TestPool_Skip(t *testing.T) {
 	ipnet := netip.MustParsePrefix("192.168.0.1/29")
 	tree := trie.New[struct{}]()
-	tree.Insert("example.com", struct{}{})
+	assert.NoError(t, tree.Insert("example.com", struct{}{}))
+	assert.False(t, tree.IsEmpty())
 	pools, tempfile, err := createPools(Options{
 		IPNet: ipnet,
 		Size:  10,
-		Host:  tree,
+		Host:  []C.DomainMatcher{tree.NewDomainSet()},
 	})
 	assert.Nil(t, err)
 	defer os.Remove(tempfile)
@@ -162,6 +164,28 @@ func TestPool_Skip(t *testing.T) {
 	for _, pool := range pools {
 		assert.True(t, pool.ShouldSkipped("example.com"))
 		assert.False(t, pool.ShouldSkipped("foo.com"))
+		assert.False(t, pool.shouldSkipped("baz.com"))
+	}
+}
+
+func TestPool_SkipWhiteList(t *testing.T) {
+	ipnet := netip.MustParsePrefix("192.168.0.1/29")
+	tree := trie.New[struct{}]()
+	assert.NoError(t, tree.Insert("example.com", struct{}{}))
+	assert.False(t, tree.IsEmpty())
+	pools, tempfile, err := createPools(Options{
+		IPNet: ipnet,
+		Size:  10,
+		Host:  []C.DomainMatcher{tree.NewDomainSet()},
+		Mode:  C.FilterWhiteList,
+	})
+	assert.Nil(t, err)
+	defer os.Remove(tempfile)
+
+	for _, pool := range pools {
+		assert.False(t, pool.ShouldSkipped("example.com"))
+		assert.True(t, pool.ShouldSkipped("foo.com"))
+		assert.True(t, pool.ShouldSkipped("baz.com"))
 	}
 }
 

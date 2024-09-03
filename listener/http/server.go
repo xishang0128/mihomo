@@ -4,9 +4,9 @@ import (
 	"net"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
+	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/auth"
 	C "github.com/metacubex/mihomo/constant"
-	"github.com/metacubex/mihomo/constant/features"
 	authStore "github.com/metacubex/mihomo/listener/auth"
 )
 
@@ -33,20 +33,20 @@ func (l *Listener) Close() error {
 }
 
 func New(addr string, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener, error) {
-	return NewWithAuthenticator(addr, tunnel, authStore.Authenticator(), additions...)
+	return NewWithAuthenticator(addr, tunnel, authStore.Authenticator, additions...)
 }
 
 // NewWithAuthenticate
 // never change type traits because it's used in CFMA
 func NewWithAuthenticate(addr string, tunnel C.Tunnel, authenticate bool, additions ...inbound.Addition) (*Listener, error) {
-	authenticator := authStore.Authenticator()
+	getAuth := authStore.Authenticator
 	if !authenticate {
-		authenticator = nil
+		getAuth = authStore.Nil
 	}
-	return NewWithAuthenticator(addr, tunnel, authenticator, additions...)
+	return NewWithAuthenticator(addr, tunnel, getAuth, additions...)
 }
 
-func NewWithAuthenticator(addr string, tunnel C.Tunnel, authenticator auth.Authenticator, additions ...inbound.Addition) (*Listener, error) {
+func NewWithAuthenticator(addr string, tunnel C.Tunnel, getAuth func() auth.Authenticator, additions ...inbound.Addition) (*Listener, error) {
 	isDefault := false
 	if len(additions) == 0 {
 		isDefault = true
@@ -74,18 +74,19 @@ func NewWithAuthenticator(addr string, tunnel C.Tunnel, authenticator auth.Authe
 				}
 				continue
 			}
-			if features.CMFA {
-				if t, ok := conn.(*net.TCPConn); ok {
-					t.SetKeepAlive(false)
-				}
-			}
+			N.TCPKeepAlive(conn)
+
+			getAuth := getAuth
 			if isDefault { // only apply on default listener
 				if !inbound.IsRemoteAddrDisAllowed(conn.RemoteAddr()) {
 					_ = conn.Close()
 					continue
 				}
+				if inbound.SkipAuthRemoteAddr(conn.RemoteAddr()) {
+					getAuth = authStore.Nil
+				}
 			}
-			go HandleConn(conn, tunnel, authenticator, additions...)
+			go HandleConn(conn, tunnel, getAuth, additions...)
 		}
 	}()
 
