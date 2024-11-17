@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/metacubex/mihomo/component/geodata"
 	"github.com/metacubex/mihomo/component/updater"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
@@ -34,6 +37,7 @@ var (
 	externalUI             string
 	externalController     string
 	externalControllerUnix string
+	externalControllerPipe string
 	secret                 string
 )
 
@@ -44,6 +48,7 @@ func init() {
 	flag.StringVar(&externalUI, "ext-ui", os.Getenv("CLASH_OVERRIDE_EXTERNAL_UI_DIR"), "override external ui directory")
 	flag.StringVar(&externalController, "ext-ctl", os.Getenv("CLASH_OVERRIDE_EXTERNAL_CONTROLLER"), "override external controller address")
 	flag.StringVar(&externalControllerUnix, "ext-ctl-unix", os.Getenv("CLASH_OVERRIDE_EXTERNAL_CONTROLLER_UNIX"), "override external controller unix address")
+	flag.StringVar(&externalControllerPipe, "ext-ctl-pipe", os.Getenv("CLASH_OVERRIDE_EXTERNAL_CONTROLLER_PIPE"), "override external controller pipe address")
 	flag.StringVar(&secret, "secret", os.Getenv("CLASH_OVERRIDE_SECRET"), "override secret for RESTful API")
 	flag.BoolVar(&geodataMode, "m", false, "set geodata mode")
 	flag.BoolVar(&version, "v", false, "show current version of mihomo")
@@ -52,6 +57,12 @@ func init() {
 }
 
 func main() {
+	// Defensive programming: panic when code mistakenly calls net.DefaultResolver
+	net.DefaultResolver.PreferGo = true
+	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		panic("should never be called")
+	}
+
 	_, _ = maxprocs.Set(maxprocs.Logger(func(string, ...any) {}))
 
 	if len(os.Args) > 1 && os.Args[1] == "convert-ruleset" {
@@ -78,7 +89,7 @@ func main() {
 	}
 
 	if geodataMode {
-		C.GeodataMode = true
+		geodata.SetGeodataMode(true)
 	}
 
 	if configString != "" {
@@ -132,6 +143,9 @@ func main() {
 	if externalControllerUnix != "" {
 		options = append(options, hub.WithExternalControllerUnix(externalControllerUnix))
 	}
+	if externalControllerPipe != "" {
+		options = append(options, hub.WithExternalControllerPipe(externalControllerPipe))
+	}
 	if secret != "" {
 		options = append(options, hub.WithSecret(secret))
 	}
@@ -140,7 +154,7 @@ func main() {
 		log.Fatalln("Parse config error: %s", err.Error())
 	}
 
-	if C.GeoAutoUpdate {
+	if updater.GeoAutoUpdate() {
 		updater.RegisterGeoUpdater()
 	}
 
@@ -155,19 +169,9 @@ func main() {
 		case <-termSign:
 			return
 		case <-hupSign:
-			var cfg *config.Config
-			var err error
-			if configString != "" {
-				cfg, err = executor.ParseWithBytes(configBytes)
-			} else {
-				cfg, err = executor.ParseWithPath(C.Path.Config())
-			}
-			if err == nil {
-				hub.ApplyConfig(cfg)
-			} else {
+			if err := hub.Parse(configBytes, options...); err != nil {
 				log.Errorln("Parse config error: %s", err.Error())
 			}
-
 		}
 	}
 }

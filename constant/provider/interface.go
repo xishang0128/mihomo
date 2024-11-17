@@ -32,8 +32,10 @@ func (v VehicleType) String() string {
 }
 
 type Vehicle interface {
-	Read(ctx context.Context) ([]byte, error)
+	Read(ctx context.Context, oldHash utils.HashType) (buf []byte, hash utils.HashType, err error)
+	Write(buf []byte) error
 	Path() string
+	Url() string
 	Proxy() string
 	Type() VehicleType
 }
@@ -71,6 +73,7 @@ type Provider interface {
 type ProxyProvider interface {
 	Provider
 	Proxies() []constant.Proxy
+	Count() int
 	// Touch is used to inform the provider that the proxy is actually being used while getting the list of proxies.
 	// Commonly used in DialContext and DialPacketConn
 	Touch()
@@ -78,6 +81,7 @@ type ProxyProvider interface {
 	Version() uint32
 	RegisterHealthCheckTask(url string, expectedStatus utils.IntRanges[uint16], filter string, interval uint)
 	HealthCheckURL() string
+	SetSubscriptionInfo(userInfo string)
 }
 
 // RuleProvider interface

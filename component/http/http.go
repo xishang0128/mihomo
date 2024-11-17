@@ -12,9 +12,21 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/component/ca"
-	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/listener/inner"
 )
+
+var (
+	ua string
+)
+
+func UA() string {
+	return ua
+}
+
+func SetUA(UA string) {
+	ua = UA
+}
 
 func HttpRequest(ctx context.Context, url, method string, header map[string][]string, body io.Reader) (*http.Response, error) {
 	return HttpRequestWithProxy(ctx, url, method, header, body, "")
@@ -35,7 +47,7 @@ func HttpRequestWithProxy(ctx context.Context, url, method string, header map[st
 	}
 
 	if _, ok := header["User-Agent"]; !ok {
-		req.Header.Set("User-Agent", C.UA)
+		req.Header.Set("User-Agent", UA())
 	}
 
 	if err != nil {
@@ -60,8 +72,7 @@ func HttpRequestWithProxy(ctx context.Context, url, method string, header map[st
 			if conn, err := inner.HandleTcp(address, specialProxy); err == nil {
 				return conn, nil
 			} else {
-				d := net.Dialer{}
-				return d.DialContext(ctx, network, address)
+				return dialer.DialContext(ctx, network, address)
 			}
 		},
 		TLSClientConfig: ca.GetGlobalTLSConfig(&tls.Config{}),

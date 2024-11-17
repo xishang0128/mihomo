@@ -1,10 +1,7 @@
 package hub
 
 import (
-	"strings"
-
 	"github.com/metacubex/mihomo/config"
-	"github.com/metacubex/mihomo/constant/features"
 	"github.com/metacubex/mihomo/hub/executor"
 	"github.com/metacubex/mihomo/hub/route"
 	"github.com/metacubex/mihomo/log"
@@ -30,6 +27,12 @@ func WithExternalControllerUnix(externalControllerUnix string) Option {
 	}
 }
 
+func WithExternalControllerPipe(externalControllerPipe string) Option {
+	return func(cfg *config.Config) {
+		cfg.Controller.ExternalControllerPipe = externalControllerPipe
+	}
+}
+
 func WithSecret(secret string) Option {
 	return func(cfg *config.Config) {
 		cfg.Controller.Secret = secret
@@ -43,11 +46,6 @@ func ApplyConfig(cfg *config.Config) {
 }
 
 func applyRoute(cfg *config.Config) {
-	if features.CMFA && strings.HasSuffix(cfg.Controller.ExternalUI, ":0") {
-		// CMFA have set its default override value to end with ":0" for security.
-		// so we direct return at here
-		return
-	}
 	if cfg.Controller.ExternalUI != "" {
 		route.SetUIPath(cfg.Controller.ExternalUI)
 	}
@@ -55,11 +53,16 @@ func applyRoute(cfg *config.Config) {
 		Addr:        cfg.Controller.ExternalController,
 		TLSAddr:     cfg.Controller.ExternalControllerTLS,
 		UnixAddr:    cfg.Controller.ExternalControllerUnix,
+		PipeAddr:    cfg.Controller.ExternalControllerPipe,
 		Secret:      cfg.Controller.Secret,
 		Certificate: cfg.TLS.Certificate,
 		PrivateKey:  cfg.TLS.PrivateKey,
 		DohServer:   cfg.Controller.ExternalDohServer,
 		IsDebug:     cfg.General.LogLevel == log.DEBUG,
+		Cors: route.Cors{
+			AllowOrigins:        cfg.Controller.Cors.AllowOrigins,
+			AllowPrivateNetwork: cfg.Controller.Cors.AllowPrivateNetwork,
+		},
 	})
 }
 

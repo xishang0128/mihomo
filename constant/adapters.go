@@ -106,6 +106,8 @@ type ProxyAdapter interface {
 	SupportUDP() bool
 	SupportXUDP() bool
 	SupportTFO() bool
+	SupportMPTCP() bool
+	SupportSMUX() bool
 	MarshalJSON() ([]byte, error)
 
 	// Deprecated: use DialContextWithDialer and ListenPacketWithDialer instead.
@@ -158,6 +160,7 @@ type DelayHistoryStoreType int
 
 type Proxy interface {
 	ProxyAdapter
+	Adapter() ProxyAdapter
 	AliveForTestUrl(url string) bool
 	DelayHistory() []DelayHistory
 	ExtraDelayHistories() map[string]ProxyState
@@ -212,6 +215,8 @@ func (at AdapterType) String() string {
 		return "WireGuard"
 	case Tuic:
 		return "Tuic"
+	case Ssh:
+		return "Ssh"
 
 	case Relay:
 		return "Relay"
@@ -223,8 +228,6 @@ func (at AdapterType) String() string {
 		return "URLTest"
 	case LoadBalance:
 		return "LoadBalance"
-	case Ssh:
-		return "Ssh"
 	default:
 		return "Unknown"
 	}
@@ -255,12 +258,16 @@ type UDPPacketInAddr interface {
 // PacketAdapter is a UDP Packet adapter for socks/redir/tun
 type PacketAdapter interface {
 	UDPPacket
+	// Metadata returns destination metadata
 	Metadata() *Metadata
+	// Key is a SNAT key
+	Key() string
 }
 
 type packetAdapter struct {
 	UDPPacket
 	metadata *Metadata
+	key      string
 }
 
 // Metadata returns destination metadata
@@ -268,10 +275,16 @@ func (s *packetAdapter) Metadata() *Metadata {
 	return s.metadata
 }
 
+// Key is a SNAT key
+func (s *packetAdapter) Key() string {
+	return s.key
+}
+
 func NewPacketAdapter(packet UDPPacket, metadata *Metadata) PacketAdapter {
 	return &packetAdapter{
 		packet,
 		metadata,
+		packet.LocalAddr().String(),
 	}
 }
 
@@ -284,16 +297,22 @@ type WriteBackProxy interface {
 	UpdateWriteBack(wb WriteBack)
 }
 
+type PacketSender interface {
+	// Send will send PacketAdapter nonblocking
+	// the implement must call UDPPacket.Drop() inside Send
+	Send(PacketAdapter)
+	// Process is a blocking loop to send PacketAdapter to PacketConn and update the WriteBackProxy
+	Process(PacketConn, WriteBackProxy)
+	// ResolveUDP do a local resolve UDP dns blocking if metadata is not resolved
+	ResolveUDP(*Metadata) error
+	// Close stop the Process loop
+	Close()
+}
+
 type NatTable interface {
-	Set(key string, e PacketConn, w WriteBackProxy)
-
-	Get(key string) (PacketConn, WriteBackProxy)
-
-	GetOrCreateLock(key string) (*sync.Cond, bool)
+	GetOrCreate(key string, maker func() PacketSender) (PacketSender, bool)
 
 	Delete(key string)
-
-	DeleteLock(key string)
 
 	GetForLocalConn(lAddr, rAddr string) *net.UDPConn
 
