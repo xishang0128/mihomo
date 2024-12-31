@@ -13,6 +13,7 @@ const (
 	File VehicleType = iota
 	HTTP
 	Compatible
+	Inline
 )
 
 // VehicleType defined
@@ -26,6 +27,8 @@ func (v VehicleType) String() string {
 		return "HTTP"
 	case Compatible:
 		return "Compatible"
+	case Inline:
+		return "Inline"
 	default:
 		return "Unknown"
 	}
@@ -81,7 +84,6 @@ type ProxyProvider interface {
 	Version() uint32
 	RegisterHealthCheckTask(url string, expectedStatus utils.IntRanges[uint16], filter string, interval uint)
 	HealthCheckURL() string
-	SetSubscriptionInfo(userInfo string)
 }
 
 // RuleProvider interface
