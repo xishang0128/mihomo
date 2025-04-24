@@ -1,6 +1,8 @@
 package inbound
 
 import (
+	"strings"
+
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing_shadowsocks"
@@ -13,6 +15,7 @@ type ShadowSocksOption struct {
 	Cipher    string    `inbound:"cipher"`
 	UDP       bool      `inbound:"udp,omitempty"`
 	MuxOption MuxOption `inbound:"mux-option,omitempty"`
+	ShadowTLS ShadowTLS `inbound:"shadow-tls,omitempty"`
 }
 
 func (o ShadowSocksOption) Equal(config C.InboundConfig) bool {
@@ -41,6 +44,7 @@ func NewShadowSocks(options *ShadowSocksOption) (*ShadowSocks, error) {
 			Cipher:    options.Cipher,
 			Udp:       options.UDP,
 			MuxOption: options.MuxOption.Build(),
+			ShadowTLS: options.ShadowTLS.Build(),
 		},
 	}, nil
 }
@@ -52,12 +56,13 @@ func (s *ShadowSocks) Config() C.InboundConfig {
 
 // Address implements constant.InboundListener
 func (s *ShadowSocks) Address() string {
+	var addrList []string
 	if s.l != nil {
 		for _, addr := range s.l.AddrList() {
-			return addr.String()
+			addrList = append(addrList, addr.String())
 		}
 	}
-	return ""
+	return strings.Join(addrList, ",")
 }
 
 // Listen implements constant.InboundListener

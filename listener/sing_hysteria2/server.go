@@ -15,6 +15,7 @@ import (
 	"github.com/metacubex/mihomo/adapter/outbound"
 	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/sockopt"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/metacubex/sing-quic/hysteria2"
 
+	"github.com/metacubex/quic-go"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -110,13 +112,21 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 		config.UdpMTU = 1200 - 3
 	}
 
+	quicConfig := &quic.Config{
+		InitialStreamReceiveWindow:     config.InitialStreamReceiveWindow,
+		MaxStreamReceiveWindow:         config.MaxStreamReceiveWindow,
+		InitialConnectionReceiveWindow: config.InitialConnectionReceiveWindow,
+		MaxConnectionReceiveWindow:     config.MaxConnectionReceiveWindow,
+	}
+
 	service, err := hysteria2.NewService[string](hysteria2.ServiceOptions{
 		Context:               context.Background(),
 		Logger:                log.SingLogger,
 		SendBPS:               outbound.StringToBps(config.Up),
 		ReceiveBPS:            outbound.StringToBps(config.Down),
 		SalamanderPassword:    salamanderPassword,
-		TLSConfig:             tlsConfig,
+		TLSConfig:             tlsC.UConfig(tlsConfig),
+		QUICConfig:            quicConfig,
 		IgnoreClientBandwidth: config.IgnoreClientBandwidth,
 		Handler:               h,
 		MasqueradeHandler:     masqueradeHandler,
@@ -140,13 +150,12 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 		_service := *service
 		service := &_service // make a copy
 
-		ul, err := net.ListenPacket("udp", addr)
+		ul, err := inbound.ListenPacket("udp", addr)
 		if err != nil {
 			return nil, err
 		}
 
-		err = sockopt.UDPReuseaddr(ul.(*net.UDPConn))
-		if err != nil {
+		if err := sockopt.UDPReuseaddr(ul); err != nil {
 			log.Warnln("Failed to Reuse UDP Address: %s", err)
 		}
 

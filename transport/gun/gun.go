@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/metacubex/mihomo/common/buf"
 	"github.com/metacubex/mihomo/common/pool"
 	tlsC "github.com/metacubex/mihomo/component/tls"
+	C "github.com/metacubex/mihomo/constant"
 
 	"golang.org/x/net/http2"
 )
@@ -35,18 +37,20 @@ var defaultHeader = http.Header{
 	"user-agent":   []string{"grpc-go/1.36.0"},
 }
 
-type DialFn = func(network, addr string) (net.Conn, error)
+type DialFn = func(ctx context.Context, network, addr string) (net.Conn, error)
 
 type Conn struct {
-	response  *http.Response
-	request   *http.Request
-	transport *TransportWrap
-	writer    *io.PipeWriter
-	once      sync.Once
-	close     atomic.Bool
-	err       error
-	remain    int
-	br        *bufio.Reader
+	initFn func() (io.ReadCloser, netAddr, error)
+	writer io.Writer
+	closer io.Closer
+	netAddr
+
+	reader io.ReadCloser
+	once   sync.Once
+	closed atomic.Bool
+	err    error
+	remain int
+	br     *bufio.Reader
 	// deadlines
 	deadline *time.Timer
 }
@@ -57,26 +61,33 @@ type Config struct {
 	ClientFingerprint string
 }
 
-func (g *Conn) initRequest() {
-	response, err := g.transport.RoundTrip(g.request)
+func (g *Conn) initReader() {
+	reader, addr, err := g.initFn()
 	if err != nil {
 		g.err = err
-		g.writer.Close()
+		if closer, ok := g.writer.(io.Closer); ok {
+			closer.Close()
+		}
 		return
 	}
+	g.netAddr = addr
 
-	if !g.close.Load() {
-		g.response = response
-		g.br = bufio.NewReader(response.Body)
+	if !g.closed.Load() {
+		g.reader = reader
+		g.br = bufio.NewReader(reader)
 	} else {
-		response.Body.Close()
+		reader.Close()
 	}
 }
 
+func (g *Conn) Init() error {
+	g.once.Do(g.initReader)
+	return g.err
+}
+
 func (g *Conn) Read(b []byte) (n int, err error) {
-	g.once.Do(g.initRequest)
-	if g.err != nil {
-		return 0, g.err
+	if err = g.Init(); err != nil {
+		return
 	}
 
 	if g.remain > 0 {
@@ -88,7 +99,7 @@ func (g *Conn) Read(b []byte) (n int, err error) {
 		n, err = io.ReadFull(g.br, b[:size])
 		g.remain -= n
 		return
-	} else if g.response == nil {
+	} else if g.reader == nil {
 		return 0, net.ErrClosed
 	}
 
@@ -139,6 +150,10 @@ func (g *Conn) Write(b []byte) (n int, err error) {
 		err = g.err
 	}
 
+	if flusher, ok := g.writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
 	return len(b), err
 }
 
@@ -158,6 +173,10 @@ func (g *Conn) WriteBuffer(buffer *buf.Buffer) error {
 		err = g.err
 	}
 
+	if flusher, ok := g.writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
 	return err
 }
 
@@ -166,16 +185,30 @@ func (g *Conn) FrontHeadroom() int {
 }
 
 func (g *Conn) Close() error {
-	g.close.Store(true)
-	if r := g.response; r != nil {
-		r.Body.Close()
+	g.closed.Store(true)
+	var errorArr []error
+
+	if reader := g.reader; reader != nil {
+		if err := reader.Close(); err != nil {
+			errorArr = append(errorArr, err)
+		}
 	}
 
-	return g.writer.Close()
+	if closer, ok := g.writer.(io.Closer); ok {
+		if err := closer.Close(); err != nil {
+			errorArr = append(errorArr, err)
+		}
+	}
+
+	if closer := g.closer; closer != nil {
+		if err := closer.Close(); err != nil {
+			errorArr = append(errorArr, err)
+		}
+	}
+
+	return errors.Join(errorArr...)
 }
 
-func (g *Conn) LocalAddr() net.Addr                { return g.transport.LocalAddr() }
-func (g *Conn) RemoteAddr() net.Addr               { return g.transport.RemoteAddr() }
 func (g *Conn) SetReadDeadline(t time.Time) error  { return g.SetDeadline(t) }
 func (g *Conn) SetWriteDeadline(t time.Time) error { return g.SetDeadline(t) }
 
@@ -191,24 +224,27 @@ func (g *Conn) SetDeadline(t time.Time) error {
 	return nil
 }
 
-func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, realityConfig *tlsC.RealityConfig) *TransportWrap {
-	wrap := TransportWrap{}
-
+func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint string, realityConfig *tlsC.RealityConfig) *TransportWrap {
 	dialFunc := func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-		pconn, err := dialFn(network, addr)
+		ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
+		defer cancel()
+		pconn, err := dialFn(ctx, network, addr)
 		if err != nil {
 			return nil, err
 		}
-		wrap.remoteAddr = pconn.RemoteAddr()
 
 		if tlsConfig == nil {
 			return pconn, nil
 		}
 
-		if len(Fingerprint) != 0 {
+		clientFingerprint := clientFingerprint
+		if tlsC.HaveGlobalFingerprint() && len(clientFingerprint) == 0 {
+			clientFingerprint = tlsC.GetGlobalFingerprint()
+		}
+		if len(clientFingerprint) != 0 {
 			if realityConfig == nil {
-				if fingerprint, exists := tlsC.GetFingerprint(Fingerprint); exists {
-					utlsConn := tlsC.UClient(pconn, cfg, fingerprint)
+				if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
+					utlsConn := tlsC.UClient(pconn, tlsC.UConfig(cfg), fingerprint)
 					if err := utlsConn.HandshakeContext(ctx); err != nil {
 						pconn.Close()
 						return nil, err
@@ -221,7 +257,7 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, re
 					return utlsConn, nil
 				}
 			} else {
-				realityConn, err := tlsC.GetRealityConn(ctx, pconn, Fingerprint, cfg, realityConfig)
+				realityConn, err := tlsC.GetRealityConn(ctx, pconn, clientFingerprint, cfg, realityConfig)
 				if err != nil {
 					pconn.Close()
 					return nil, err
@@ -251,7 +287,7 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, re
 		return conn, nil
 	}
 
-	wrap.Transport = &http2.Transport{
+	transport := &http2.Transport{
 		DialTLSContext:     dialFunc,
 		TLSClientConfig:    tlsConfig,
 		AllowHTTP:          false,
@@ -259,7 +295,13 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, re
 		PingTimeout:        0,
 	}
 
-	return &wrap
+	ctx, cancel := context.WithCancel(context.Background())
+	wrap := &TransportWrap{
+		Transport: transport,
+		ctx:       ctx,
+		cancel:    cancel,
+	}
+	return wrap
 }
 
 func StreamGunWithTransport(transport *TransportWrap, cfg *Config) (net.Conn, error) {
@@ -284,23 +326,43 @@ func StreamGunWithTransport(transport *TransportWrap, cfg *Config) (net.Conn, er
 		ProtoMinor: 0,
 		Header:     defaultHeader,
 	}
+	request = request.WithContext(transport.ctx)
 
 	conn := &Conn{
-		request:   request,
-		transport: transport,
-		writer:    writer,
-		close:     atomic.NewBool(false),
+		initFn: func() (io.ReadCloser, netAddr, error) {
+			nAddr := netAddr{}
+			trace := &httptrace.ClientTrace{
+				GotConn: func(connInfo httptrace.GotConnInfo) {
+					nAddr.localAddr = connInfo.Conn.LocalAddr()
+					nAddr.remoteAddr = connInfo.Conn.RemoteAddr()
+				},
+			}
+			request = request.WithContext(httptrace.WithClientTrace(request.Context(), trace))
+			response, err := transport.RoundTrip(request)
+			if err != nil {
+				return nil, nAddr, err
+			}
+			return response.Body, nAddr, nil
+		},
+		writer: writer,
 	}
 
-	go conn.once.Do(conn.initRequest)
+	go conn.Init()
 	return conn, nil
 }
 
 func StreamGunWithConn(conn net.Conn, tlsConfig *tls.Config, cfg *Config, realityConfig *tlsC.RealityConfig) (net.Conn, error) {
-	dialFn := func(network, addr string) (net.Conn, error) {
+	dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return conn, nil
 	}
 
 	transport := NewHTTP2Client(dialFn, tlsConfig, cfg.ClientFingerprint, realityConfig)
-	return StreamGunWithTransport(transport, cfg)
+	c, err := StreamGunWithTransport(transport, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if c, ok := c.(*Conn); ok { // The incoming net.Conn should be closed synchronously with the generated gun.Conn
+		c.closer = conn
+	}
+	return c, nil
 }

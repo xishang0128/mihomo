@@ -13,12 +13,12 @@ import (
 	"github.com/metacubex/mihomo/component/proxydialer"
 	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
+	gost "github.com/metacubex/mihomo/transport/gost-plugin"
 	"github.com/metacubex/mihomo/transport/restls"
 	obfs "github.com/metacubex/mihomo/transport/simple-obfs"
 	shadowtls "github.com/metacubex/mihomo/transport/sing-shadowtls"
 	v2rayObfs "github.com/metacubex/mihomo/transport/v2ray-plugin"
 
-	restlsC "github.com/3andne/restls-client-go"
 	shadowsocks "github.com/metacubex/sing-shadowsocks2"
 	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
@@ -34,8 +34,9 @@ type ShadowSocks struct {
 	obfsMode        string
 	obfsOption      *simpleObfsOption
 	v2rayOption     *v2rayObfs.Option
+	gostOption      *gost.Option
 	shadowTLSOption *shadowtls.ShadowTLSOption
-	restlsConfig    *restlsC.Config
+	restlsConfig    *restls.Config
 }
 
 type ShadowSocksOption struct {
@@ -71,12 +72,24 @@ type v2rayObfsOption struct {
 	V2rayHttpUpgradeFastOpen bool              `obfs:"v2ray-http-upgrade-fast-open,omitempty"`
 }
 
+type gostObfsOption struct {
+	Mode           string            `obfs:"mode"`
+	Host           string            `obfs:"host,omitempty"`
+	Path           string            `obfs:"path,omitempty"`
+	TLS            bool              `obfs:"tls,omitempty"`
+	Fingerprint    string            `obfs:"fingerprint,omitempty"`
+	Headers        map[string]string `obfs:"headers,omitempty"`
+	SkipCertVerify bool              `obfs:"skip-cert-verify,omitempty"`
+	Mux            bool              `obfs:"mux,omitempty"`
+}
+
 type shadowTLSOption struct {
-	Password       string `obfs:"password"`
-	Host           string `obfs:"host"`
-	Fingerprint    string `obfs:"fingerprint,omitempty"`
-	SkipCertVerify bool   `obfs:"skip-cert-verify,omitempty"`
-	Version        int    `obfs:"version,omitempty"`
+	Password       string   `obfs:"password,omitempty"`
+	Host           string   `obfs:"host"`
+	Fingerprint    string   `obfs:"fingerprint,omitempty"`
+	SkipCertVerify bool     `obfs:"skip-cert-verify,omitempty"`
+	Version        int      `obfs:"version,omitempty"`
+	ALPN           []string `obfs:"alpn,omitempty"`
 }
 
 type restlsOption struct {
@@ -87,7 +100,7 @@ type restlsOption struct {
 }
 
 // StreamConnContext implements C.ProxyAdapter
-func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (net.Conn, error) {
+func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ net.Conn, err error) {
 	useEarly := false
 	switch ss.obfsMode {
 	case "tls":
@@ -96,20 +109,23 @@ func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metada
 		_, port, _ := net.SplitHostPort(ss.addr)
 		c = obfs.NewHTTPObfs(c, ss.obfsOption.Host, port)
 	case "websocket":
-		var err error
-		c, err = v2rayObfs.NewV2rayObfs(ctx, c, ss.v2rayOption)
+		if ss.v2rayOption != nil {
+			c, err = v2rayObfs.NewV2rayObfs(ctx, c, ss.v2rayOption)
+		} else if ss.gostOption != nil {
+			c, err = gost.NewGostWebsocket(ctx, c, ss.gostOption)
+		} else {
+			return nil, fmt.Errorf("plugin options is required")
+		}
 		if err != nil {
 			return nil, fmt.Errorf("%s connect error: %w", ss.addr, err)
 		}
 	case shadowtls.Mode:
-		var err error
 		c, err = shadowtls.NewShadowTLS(ctx, c, ss.shadowTLSOption)
 		if err != nil {
 			return nil, err
 		}
 		useEarly = true
 	case restls.Mode:
-		var err error
 		c, err = restls.NewRestls(ctx, c, ss.restlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("%s (restls) connect error: %w", ss.addr, err)
@@ -117,6 +133,12 @@ func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metada
 		useEarly = true
 	}
 	useEarly = useEarly || N.NeedHandshake(c)
+	if !useEarly {
+		if ctx.Done() != nil {
+			done := N.SetupContextForConn(ctx, c)
+			defer done(&err)
+		}
+	}
 	if metadata.NetWork == C.UDP && ss.option.UDPOverTCP {
 		uotDestination := uot.RequestDestination(uint8(ss.option.UDPOverTCPVersion))
 		if useEarly {
@@ -178,7 +200,7 @@ func (ss *ShadowSocks) ListenPacketWithDialer(ctx context.Context, dialer C.Dial
 			return nil, err
 		}
 	}
-	addr, err := resolveUDPAddrWithPrefer(ctx, "udp", ss.addr, ss.prefer)
+	addr, err := resolveUDPAddr(ctx, "udp", ss.addr, ss.prefer)
 	if err != nil {
 		return nil, err
 	}
@@ -236,13 +258,14 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 		Password: option.Password,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("ss %s initialize error: %w", addr, err)
+		return nil, fmt.Errorf("ss %s cipher: %s initialize error: %w", addr, option.Cipher, err)
 	}
 
 	var v2rayOption *v2rayObfs.Option
+	var gostOption *gost.Option
 	var obfsOption *simpleObfsOption
 	var shadowTLSOpt *shadowtls.ShadowTLSOption
-	var restlsConfig *restlsC.Config
+	var restlsConfig *restls.Config
 	obfsMode := ""
 
 	decoder := structure.NewDecoder(structure.Option{TagName: "obfs", WeaklyTypedInput: true})
@@ -281,6 +304,28 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			v2rayOption.SkipCertVerify = opts.SkipCertVerify
 			v2rayOption.Fingerprint = opts.Fingerprint
 		}
+	} else if option.Plugin == "gost-plugin" {
+		opts := gostObfsOption{Host: "bing.com", Mux: true}
+		if err := decoder.Decode(option.PluginOpts, &opts); err != nil {
+			return nil, fmt.Errorf("ss %s initialize gost-plugin error: %w", addr, err)
+		}
+
+		if opts.Mode != "websocket" {
+			return nil, fmt.Errorf("ss %s obfs mode error: %s", addr, opts.Mode)
+		}
+		obfsMode = opts.Mode
+		gostOption = &gost.Option{
+			Host:    opts.Host,
+			Path:    opts.Path,
+			Headers: opts.Headers,
+			Mux:     opts.Mux,
+		}
+
+		if opts.TLS {
+			gostOption.TLS = true
+			gostOption.SkipCertVerify = opts.SkipCertVerify
+			gostOption.Fingerprint = opts.Fingerprint
+		}
 	} else if option.Plugin == shadowtls.Mode {
 		obfsMode = shadowtls.Mode
 		opt := &shadowTLSOption{
@@ -298,6 +343,12 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			SkipCertVerify:    opt.SkipCertVerify,
 			Version:           opt.Version,
 		}
+
+		if opt.ALPN != nil { // structure's Decode will ensure value not nil when input has value even it was set an empty array
+			shadowTLSOpt.ALPN = opt.ALPN
+		} else {
+			shadowTLSOpt.ALPN = shadowtls.DefaultALPN
+		}
 	} else if option.Plugin == restls.Mode {
 		obfsMode = restls.Mode
 		restlsOpt := &restlsOption{}
@@ -305,7 +356,7 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			return nil, fmt.Errorf("ss %s initialize restls-plugin error: %w", addr, err)
 		}
 
-		restlsConfig, err = restlsC.NewRestlsConfig(restlsOpt.Host, restlsOpt.Password, restlsOpt.VersionHint, restlsOpt.RestlsScript, option.ClientFingerprint)
+		restlsConfig, err = restls.NewRestlsConfig(restlsOpt.Host, restlsOpt.Password, restlsOpt.VersionHint, restlsOpt.RestlsScript, option.ClientFingerprint)
 		if err != nil {
 			return nil, fmt.Errorf("ss %s initialize restls-plugin error: %w", addr, err)
 		}
@@ -336,6 +387,7 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 		option:          &option,
 		obfsMode:        obfsMode,
 		v2rayOption:     v2rayOption,
+		gostOption:      gostOption,
 		obfsOption:      obfsOption,
 		shadowTLSOption: shadowTLSOpt,
 		restlsConfig:    restlsConfig,

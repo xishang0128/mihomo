@@ -378,12 +378,14 @@ func handleUDPConn(packet C.PacketAdapter) {
 		return
 	}
 
-	if sniffingEnable && snifferDispatcher.Enable() {
-		snifferDispatcher.UDPSniff(packet)
-	}
-
 	key := packet.Key()
-	sender, loaded := natTable.GetOrCreate(key, newPacketSender)
+	sender, loaded := natTable.GetOrCreate(key, func() C.PacketSender {
+		sender := newPacketSender()
+		if sniffingEnable && snifferDispatcher.Enable() {
+			return snifferDispatcher.UDPSniff(packet, sender)
+		}
+		return sender
+	})
 	if !loaded {
 		dial := func() (C.PacketConn, C.WriteBackProxy, error) {
 			if err := sender.ResolveUDP(metadata); err != nil {
@@ -547,7 +549,7 @@ func handleTCPConn(connCtx C.ConnContext) {
 	}
 	logMetadata(metadata, rule, remoteConn)
 
-	remoteConn = statistic.NewTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, 0, int64(peekLen), true)
+	remoteConn = statistic.NewTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, int64(peekLen), 0, true)
 	defer func(remoteConn C.Conn) {
 		_ = remoteConn.Close()
 	}(remoteConn)

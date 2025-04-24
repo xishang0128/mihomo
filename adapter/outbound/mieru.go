@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"runtime"
 	"strconv"
 	"sync"
 
+	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	C "github.com/metacubex/mihomo/constant"
 
 	mieruclient "github.com/enfein/mieru/v3/apis/client"
+	mierucommon "github.com/enfein/mieru/v3/apis/common"
 	mierumodel "github.com/enfein/mieru/v3/apis/model"
 	mierupb "github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
 	"google.golang.org/protobuf/proto"
@@ -32,6 +33,7 @@ type MieruOption struct {
 	Port         int    `proxy:"port,omitempty"`
 	PortRange    string `proxy:"port-range,omitempty"`
 	Transport    string `proxy:"transport"`
+	UDP          bool   `proxy:"udp,omitempty"`
 	UserName     string `proxy:"username"`
 	Password     string `proxy:"password"`
 	Multiplexing string `proxy:"multiplexing,omitempty"`
@@ -48,6 +50,23 @@ func (m *Mieru) DialContext(ctx context.Context, metadata *C.Metadata, opts ...d
 		return nil, fmt.Errorf("dial to %s failed: %w", addr, err)
 	}
 	return NewConn(c, m), nil
+}
+
+// ListenPacketContext implements C.ProxyAdapter
+func (m *Mieru) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
+	if err := m.ensureClientIsRunning(opts...); err != nil {
+		return nil, err
+	}
+	c, err := m.client.DialContext(ctx, metadata.UDPAddr())
+	if err != nil {
+		return nil, fmt.Errorf("dial to %s failed: %w", metadata.UDPAddr(), err)
+	}
+	return newPacketConn(CN.NewThreadSafePacketConn(mierucommon.NewUDPAssociateWrapper(mierucommon.NewPacketOverStreamTunnel(c))), m), nil
+}
+
+// SupportUOT implements C.ProxyAdapter
+func (m *Mieru) SupportUOT() bool {
+	return true
 }
 
 // ProxyInfo implements C.ProxyAdapter
@@ -113,7 +132,7 @@ func NewMieru(option MieruOption) (*Mieru, error) {
 			addr:   addr,
 			iface:  option.Interface,
 			tp:     C.Mieru,
-			udp:    false,
+			udp:    option.UDP,
 			xudp:   false,
 			rmark:  option.RoutingMark,
 			prefer: C.NewDNSPrefer(option.IPVersion),
@@ -121,16 +140,17 @@ func NewMieru(option MieruOption) (*Mieru, error) {
 		option: &option,
 		client: c,
 	}
-	runtime.SetFinalizer(outbound, closeMieru)
 	return outbound, nil
 }
 
-func closeMieru(m *Mieru) {
+// Close implements C.ProxyAdapter
+func (m *Mieru) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.client != nil && m.client.IsRunning() {
-		m.client.Stop()
+		return m.client.Stop()
 	}
+	return nil
 }
 
 func metadataToMieruNetAddrSpec(metadata *C.Metadata) mierumodel.NetAddrSpec {

@@ -42,12 +42,15 @@ type ShadowSocksROption struct {
 }
 
 // StreamConnContext implements C.ProxyAdapter
-func (ssr *ShadowSocksR) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (net.Conn, error) {
+func (ssr *ShadowSocksR) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ net.Conn, err error) {
+	if ctx.Done() != nil {
+		done := N.SetupContextForConn(ctx, c)
+		defer done(&err)
+	}
 	c = ssr.obfs.StreamConn(c)
 	c = ssr.cipher.StreamConn(c)
 	var (
-		iv  []byte
-		err error
+		iv []byte
 	)
 	switch conn := c.(type) {
 	case *shadowstream.Conn:
@@ -102,7 +105,7 @@ func (ssr *ShadowSocksR) ListenPacketWithDialer(ctx context.Context, dialer C.Di
 			return nil, err
 		}
 	}
-	addr, err := resolveUDPAddrWithPrefer(ctx, "udp", ssr.addr, ssr.prefer)
+	addr, err := resolveUDPAddr(ctx, "udp", ssr.addr, ssr.prefer)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +144,7 @@ func NewShadowSocksR(option ShadowSocksROption) (*ShadowSocksR, error) {
 	password := option.Password
 	coreCiph, err := core.PickCipher(cipher, nil, password)
 	if err != nil {
-		return nil, fmt.Errorf("ssr %s initialize error: %w", addr, err)
+		return nil, fmt.Errorf("ssr %s cipher: %s initialize error: %w", addr, cipher, err)
 	}
 	var (
 		ivSize int

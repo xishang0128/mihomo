@@ -99,3 +99,4 @@ API.
 
 This software is released under the GPL-3.0 license.
 
+**In addition, any downstream projects not affiliated with `MetaCubeX` shall not contain the word `mihomo` in their names.**

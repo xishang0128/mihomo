@@ -1,6 +1,8 @@
 package inbound
 
 import (
+	"strings"
+
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing_hysteria2"
@@ -23,6 +25,12 @@ type Hysteria2Option struct {
 	CWND                  int               `inbound:"cwnd,omitempty"`
 	UdpMTU                int               `inbound:"udp-mtu,omitempty"`
 	MuxOption             MuxOption         `inbound:"mux-option,omitempty"`
+
+	// quic-go special config
+	InitialStreamReceiveWindow     uint64 `inbound:"initial-stream-receive-window,omitempty"`
+	MaxStreamReceiveWindow         uint64 `inbound:"max-stream-receive-window,omitempty"`
+	InitialConnectionReceiveWindow uint64 `inbound:"initial-connection-receive-window,omitempty"`
+	MaxConnectionReceiveWindow     uint64 `inbound:"max-connection-receive-window,omitempty"`
 }
 
 func (o Hysteria2Option) Equal(config C.InboundConfig) bool {
@@ -61,6 +69,11 @@ func NewHysteria2(options *Hysteria2Option) (*Hysteria2, error) {
 			CWND:                  options.CWND,
 			UdpMTU:                options.UdpMTU,
 			MuxOption:             options.MuxOption.Build(),
+			// quic-go special config
+			InitialStreamReceiveWindow:     options.InitialStreamReceiveWindow,
+			MaxStreamReceiveWindow:         options.MaxStreamReceiveWindow,
+			InitialConnectionReceiveWindow: options.InitialConnectionReceiveWindow,
+			MaxConnectionReceiveWindow:     options.MaxConnectionReceiveWindow,
 		},
 	}, nil
 }
@@ -72,12 +85,13 @@ func (t *Hysteria2) Config() C.InboundConfig {
 
 // Address implements constant.InboundListener
 func (t *Hysteria2) Address() string {
+	var addrList []string
 	if t.l != nil {
 		for _, addr := range t.l.AddrList() {
-			return addr.String()
+			addrList = append(addrList, addr.String())
 		}
 	}
-	return ""
+	return strings.Join(addrList, ",")
 }
 
 // Listen implements constant.InboundListener

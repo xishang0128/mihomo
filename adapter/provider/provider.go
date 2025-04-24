@@ -87,6 +87,7 @@ func (bp *baseProvider) RegisterHealthCheckTask(url string, expectedStatus utils
 
 func (bp *baseProvider) setProxies(proxies []C.Proxy) {
 	bp.proxies = proxies
+	bp.version += 1
 	bp.healthCheck.setProxy(proxies)
 	if bp.healthCheck.auto() {
 		go bp.healthCheck.check()
@@ -137,7 +138,7 @@ func (pp *proxySetProvider) Initial() error {
 		return err
 	}
 	if subscriptionInfo := cachefile.Cache().GetSubscriptionInfo(pp.Name()); subscriptionInfo != "" {
-		pp.subscriptionInfo.Update(subscriptionInfo)
+		pp.subscriptionInfo = NewSubscriptionInfo(subscriptionInfo)
 	}
 	pp.closeAllConnections()
 	return nil
@@ -165,23 +166,21 @@ func NewProxySetProvider(name string, interval time.Duration, parser resource.Pa
 		go hc.process()
 	}
 
-	si := new(SubscriptionInfo)
 	pd := &proxySetProvider{
 		baseProvider: baseProvider{
 			name:        name,
 			proxies:     []C.Proxy{},
 			healthCheck: hc,
 		},
-		subscriptionInfo: si,
 	}
 
-	fetcher := resource.NewFetcher[[]C.Proxy](name, interval, vehicle, parser, proxiesOnUpdate(pd))
+	fetcher := resource.NewFetcher[[]C.Proxy](name, interval, vehicle, parser, pd.setProxies)
 	pd.Fetcher = fetcher
 	if httpVehicle, ok := vehicle.(*resource.HTTPVehicle); ok {
 		httpVehicle.SetInRead(func(resp *http.Response) {
 			if subscriptionInfo := resp.Header.Get("subscription-userinfo"); subscriptionInfo != "" {
 				cachefile.Cache().SetSubscriptionInfo(name, subscriptionInfo)
-				si.Update(subscriptionInfo)
+				pd.subscriptionInfo = NewSubscriptionInfo(subscriptionInfo)
 			}
 		})
 	}
@@ -325,13 +324,6 @@ func NewCompatibleProvider(name string, proxies []C.Proxy, hc *HealthCheck) (*Co
 func (cp *CompatibleProvider) Close() error {
 	runtime.SetFinalizer(cp, nil)
 	return cp.compatibleProvider.Close()
-}
-
-func proxiesOnUpdate(pd *proxySetProvider) func([]C.Proxy) {
-	return func(elm []C.Proxy) {
-		pd.setProxies(elm)
-		pd.version += 1
-	}
 }
 
 func NewProxiesParser(filter string, excludeFilter string, excludeType string, dialerProxy string, override OverrideSchema) (resource.Parser[[]C.Proxy], error) {

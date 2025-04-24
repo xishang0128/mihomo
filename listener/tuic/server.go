@@ -1,7 +1,6 @@
 package tuic
 
 import (
-	"context"
 	"crypto/tls"
 	"net"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/metacubex/mihomo/adapter/inbound"
 	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/sockopt"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
@@ -61,6 +61,14 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 	} else {
 		tlsConfig.NextProtos = []string{"h3"}
 	}
+
+	if config.MaxIdleTime == 0 {
+		config.MaxIdleTime = 15000
+	}
+	if config.AuthenticationTimeout == 0 {
+		config.AuthenticationTimeout = 1000
+	}
+
 	quicConfig := &quic.Config{
 		MaxIdleTimeout:        time.Duration(config.MaxIdleTime) * time.Millisecond,
 		MaxIncomingStreams:    ServerMaxIncomingStreams,
@@ -93,23 +101,14 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 	quicConfig.MaxDatagramFrameSize = int64(maxDatagramFrameSize)
 
 	handleTcpFn := func(conn net.Conn, addr socks5.Addr, _additions ...inbound.Addition) error {
-		newAdditions := additions
-		if len(_additions) > 0 {
-			newAdditions = slices.Clone(additions)
-			newAdditions = append(newAdditions, _additions...)
-		}
-		conn, metadata := inbound.NewSocket(addr, conn, C.TUIC, newAdditions...)
-		if h.IsSpecialFqdn(metadata.Host) {
-			go func() { // ParseSpecialFqdn will block, so open a new goroutine
-				_ = h.ParseSpecialFqdn(
-					sing.WithAdditions(context.Background(), newAdditions...),
-					conn,
-					sing.ConvertMetadata(metadata),
-				)
-			}()
-			return nil
-		}
-		go tunnel.HandleTCPConn(conn, metadata)
+		//newAdditions := additions
+		//if len(_additions) > 0 {
+		//	newAdditions = slices.Clone(additions)
+		//	newAdditions = append(newAdditions, _additions...)
+		//}
+		//conn, metadata := inbound.NewSocket(addr, conn, C.TUIC, newAdditions...)
+		//go tunnel.HandleTCPConn(conn, metadata)
+		go h.HandleSocket(addr, conn, _additions...) // h.HandleSocket will block, so open a new goroutine
 		return nil
 	}
 	handleUdpFn := func(addr socks5.Addr, packet C.UDPPacket, _additions ...inbound.Addition) error {
@@ -125,7 +124,7 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 	option := &tuic.ServerOption{
 		HandleTcpFn:           handleTcpFn,
 		HandleUdpFn:           handleUdpFn,
-		TlsConfig:             tlsConfig,
+		TlsConfig:             tlsC.UConfig(tlsConfig),
 		QuicConfig:            quicConfig,
 		CongestionController:  config.CongestionController,
 		AuthenticationTimeout: time.Duration(config.AuthenticationTimeout) * time.Millisecond,
@@ -152,13 +151,12 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 	for _, addr := range strings.Split(config.Listen, ",") {
 		addr := addr
 
-		ul, err := net.ListenPacket("udp", addr)
+		ul, err := inbound.ListenPacket("udp", addr)
 		if err != nil {
 			return nil, err
 		}
 
-		err = sockopt.UDPReuseaddr(ul.(*net.UDPConn))
-		if err != nil {
+		if err := sockopt.UDPReuseaddr(ul); err != nil {
 			log.Warnln("Failed to Reuse UDP Address: %s", err)
 		}
 

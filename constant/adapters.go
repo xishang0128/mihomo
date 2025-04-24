@@ -43,6 +43,7 @@ const (
 	Tuic
 	Ssh
 	Mieru
+	AnyTLS
 )
 
 const (
@@ -148,11 +149,13 @@ type ProxyAdapter interface {
 
 	// Unwrap extracts the proxy from a proxy-group. It returns nil when nothing to extract.
 	Unwrap(metadata *Metadata, touch bool) Proxy
+
+	// Close releasing associated resources
+	Close() error
 }
 
 type Group interface {
 	URLTest(ctx context.Context, url string, expectedStatus utils.IntRanges[uint16]) (mp map[string]uint16, err error)
-	GetProxies(touch bool) []Proxy
 	Touch()
 }
 
@@ -229,6 +232,8 @@ func (at AdapterType) String() string {
 		return "Ssh"
 	case Mieru:
 		return "Mieru"
+	case AnyTLS:
+		return "AnyTLS"
 	case Relay:
 		return "Relay"
 	case Selector:
