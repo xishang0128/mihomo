@@ -199,19 +199,12 @@ jobs:
         if [ -n "${{ github.event.inputs.version }}" ]; then
           echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
         fi
-        echo $VERSION
-
-    - name: Set Time Variable
-      run: |
         echo "BUILDTIME=$(date)" >> $GITHUB_ENV
         echo "CGO_ENABLED=0" >> $GITHUB_ENV
         echo "BUILDTAG=-extldflags --static" >> $GITHUB_ENV
         echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
-
-    - name: Set PackageVersion
-      run: |
-        PackageVersion=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' | sed 's/v//g' )
-        if [ $(git branch | awk -F ' ' '{print $2}') = "Alpha" ]; then
+        PackageVersion=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | jq -r '.tag_name' | sed 's/v//g')
+        if [ "${GITHUB_REF_NAME,,}" = "alpha" ]; then
           PackageVersion="$(echo "${PackageVersion}" | awk -F '.' '{$NF = $NF + 1; print}' OFS='.').${VERSION/-/.}"
         fi
         echo "PackageVersion=${PackageVersion}" >> $GITHUB_ENV
