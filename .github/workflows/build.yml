@@ -195,12 +195,13 @@ jobs:
 
     - name: Set variables
       run: |
-        echo "VERSION=${GITHUB_REF_NAME,,}-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+        VERSION=${GITHUB_REF_NAME,,}-$(git rev-parse --short HEAD)
         PackageVersion="$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | jq -r '.tag_name' | sed 's/v//g' | awk -F '.' '{$NF = $NF + 1; print}' OFS='.').${VERSION/-/.}"
         if [ -n "${{ github.event.inputs.version }}" ]; then
-          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-          PackageVersion="${VERSION#v}"
+          VERSION=${{ github.event.inputs.version }}
+          PackageVersion=${VERSION#v}" >> $GITHUB_ENV
         fi
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
         echo "PackageVersion=${PackageVersion}" >> $GITHUB_ENV
       
         echo "BUILDTIME=$(date)" >> $GITHUB_ENV
